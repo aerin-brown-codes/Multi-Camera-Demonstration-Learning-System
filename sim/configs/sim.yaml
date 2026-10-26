@@ -1,0 +1,14 @@
+scene: tabletop             # sim/scenes/<scene>.xml
+rig: rig.yaml               # relative to this file
+
+feed:
+  host: 127.0.0.1           # 0.0.0.0 to let another machine subscribe (e.g. the Ubuntu box later)
+  port: 5555
+  queue_messages: 10        # ZMQ high-water mark, ~2 frames of 4 cameras + truth; slow consumers drop old frames, like a real camera
+
+speed_warn_below: 0.95      # print when the sim runs slower than this fraction of real time
+speed_report_s: 2.0         # how often to check
+
+view:
+  depth_display_m: [0.5, 1.5]   # depth colour scale over the work area: near = red, far = blue/purple, no reading = black
+  scale: 0.5                    # shrink tiles so 4 cameras fit on a laptop screen

@@ -1,0 +1,12 @@
+<!-- Shared by every scenario: floor, lights, table.
+     World frame: metres, z up, origin on the floor under the table centre, x along the long side.
+     Scenes add their own objects; cameras come from the rig file, not from scenes. -->
+<mujoco model="base">
+  <worldbody>
+    <light name="top" pos="0 0 2.5" dir="0 0 -1"/>
+    <light name="side" pos="1 1 2" dir="-1 -1 -2"/>
+    <geom name="floor" type="plane" size="3 3 0.1" rgba="0.5 0.5 0.5 1"/>
+    <!-- 1.2 x 0.8 m table, top at z = 0.75 -->
+    <geom name="table" type="box" pos="0 0 0.375" size="0.6 0.4 0.375" rgba="0.6 0.45 0.3 1"/>
+  </worldbody>
+</mujoco>

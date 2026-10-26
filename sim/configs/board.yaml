@@ -1,0 +1,10 @@
+# ChArUco calibration board. Prints on A3 (0.385 x 0.275 m). After changing this, regenerate the
+# texture (uv run python -m sim.board) and update the board geom in the scene files to match.
+# 55 mm squares stay readable to ~1 m at 848x480; 40 mm squares fail beyond ~0.8 m.
+
+squares_x: 7
+squares_y: 5
+square_m: 0.055
+marker_m: 0.041
+dictionary: DICT_5X5_100
+png_px_per_mm: 10

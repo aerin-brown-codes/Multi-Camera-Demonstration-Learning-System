@@ -1,0 +1,22 @@
+# Camera rig. World frame: metres, z up, origin on the floor under the table centre,
+# x along the table's long side, table top at z = 0.75.
+
+fps: 30
+
+profiles:
+  d435:                    # RealSense D435 color stream at 848x480, depth aligned to color
+    width: 848
+    height: 480
+    fx: 610.0              # ~69 deg horizontal FOV (D435 datasheet). Replace with factory
+    fy: 610.0              # intrinsics read from a real unit via pyrealsense2 once we have one
+    cx: 423.5
+    cy: 239.5
+    depth_min_m: 0.2
+    depth_max_m: 3.0
+    depth_scale: 0.001     # 1 depth unit = 1 mm (RealSense default)
+
+cameras:                   # 4 corners, 0.7 m out, 0.5 m above the table, aimed at the work area
+  - {name: cam0, profile: d435, position: [ 0.495,  0.495, 1.25], look_at: [0, 0, 0.75]}
+  - {name: cam1, profile: d435, position: [-0.495,  0.495, 1.25], look_at: [0, 0, 0.75]}
+  - {name: cam2, profile: d435, position: [-0.495, -0.495, 1.25], look_at: [0, 0, 0.75]}
+  - {name: cam3, profile: d435, position: [ 0.495, -0.495, 1.25], look_at: [0, 0, 0.75]}
