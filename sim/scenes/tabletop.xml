@@ -1,0 +1,36 @@
+<!-- Tabletop: ChArUco board flat on the table plus four Duplo-sized bricks. -->
+<mujoco model="tabletop">
+  <compiler texturedir="../assets"/>
+  <include file="base.xml"/>
+
+  <asset>
+    <texture name="charuco" type="2d" file="charuco_7x5_55mm.png"/>
+    <material name="charuco" texture="charuco"/>
+  </asset>
+
+  <worldbody>
+    <!-- Board from configs/board.yaml: 0.385 x 0.275 m, 3 mm thick, resting on the table, yawed 15 deg.
+         Static, so its pose here is the exact ground truth (see sim.board.T_world_board). -->
+    <body name="board" pos="0 0 0.7515" euler="0 0 15">
+      <geom name="board" type="box" size="0.1925 0.1375 0.0015" material="charuco"/>
+    </body>
+
+    <!-- Duplo 2x4-sized bricks: 63.7 x 31.8 x 19.2 mm, ~13 g, no studs yet. Start 2 mm up and settle. -->
+    <body name="brick_red" pos="0.30 0.15 0.7616" euler="0 0 30">
+      <freejoint/>
+      <geom type="box" size="0.03185 0.0159 0.0096" mass="0.013" rgba="0.8 0.1 0.1 1"/>
+    </body>
+    <body name="brick_blue" pos="-0.30 0.12 0.7616" euler="0 0 -20">
+      <freejoint/>
+      <geom type="box" size="0.03185 0.0159 0.0096" mass="0.013" rgba="0.1 0.3 0.8 1"/>
+    </body>
+    <body name="brick_yellow" pos="-0.28 -0.16 0.7616" euler="0 0 75">
+      <freejoint/>
+      <geom type="box" size="0.03185 0.0159 0.0096" mass="0.013" rgba="0.95 0.8 0.1 1"/>
+    </body>
+    <body name="brick_green" pos="0.27 -0.17 0.7616" euler="0 0 -60">
+      <freejoint/>
+      <geom type="box" size="0.03185 0.0159 0.0096" mass="0.013" rgba="0.1 0.6 0.2 1"/>
+    </body>
+  </worldbody>
+</mujoco>
