@@ -4,9 +4,10 @@ import mujoco
 import numpy as np
 import pytest
 
+import sim
 from sim.rig import OPENCV_TO_MUJOCO_CAMERA_AXES, Camera, Profile, Rig, add_cameras, load_rig, look_at
 
-RIG_YAML = Path(__file__).parents[1] / "configs" / "rig.yaml"
+RIG_YAML = Path(sim.__file__).parent / "configs" / "rig.yaml"
 
 OFF_CENTRE_NON_SQUARE = Profile(width=848, height=480, fx=615.0, fy=600.0, cx=400.0, cy=260.0,
                                 depth_min_m=0.2, depth_max_m=3.0, depth_scale=0.001)
