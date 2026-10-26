@@ -4,11 +4,12 @@ from types import SimpleNamespace
 import mujoco
 import pytest
 
+import sim
 from sim.render import RigRenderer
 from sim.rig import load_rig
 from sim.world import build_model
 
-RIG_YAML = Path(__file__).parents[1] / "configs" / "rig.yaml"
+RIG_YAML = Path(sim.__file__).parent / "configs" / "rig.yaml"
 
 
 @pytest.fixture(scope="module")
