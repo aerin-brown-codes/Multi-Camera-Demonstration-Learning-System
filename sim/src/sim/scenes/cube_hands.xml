@@ -1,0 +1,28 @@
+<!-- Cube and two hands: what the detector looks at. No ChArUco board; calibration uses tabletop.xml.
+     Nothing here is simulated. configs/scenes/cube_hands.yaml lists poses, and sim.poses writes the cube's
+     and hands' positions directly, so the positions in this file only matter until the first pose. -->
+<mujoco model="cube_hands">
+  <include file="base.xml"/>
+
+  <asset>
+    <model name="right_hand" file="shadow_hand/right_hand.xml"/>
+    <model name="left_hand" file="shadow_hand/left_hand.xml"/>
+  </asset>
+
+  <worldbody>
+    <!-- 5 cm cube. Its z here (table top 0.75 + half the cube) is where a pose puts it when it gives no z. -->
+    <body name="cube" pos="0 0 0.775">
+      <freejoint/>
+      <geom name="cube" type="box" size="0.025 0.025 0.025" rgba="0.8 0.1 0.1 1"/>
+    </body>
+
+    <!-- Each hand hangs under a mocap body, which a script moves directly. The hand's own parts keep
+         their Menagerie names behind a prefix: right/rh_palm, left/lh_ffdistal, ... -->
+    <body name="hand_right" mocap="true">
+      <attach model="right_hand" body="rh_forearm" prefix="right/"/>
+    </body>
+    <body name="hand_left" mocap="true">
+      <attach model="left_hand" body="lh_forearm" prefix="left/"/>
+    </body>
+  </worldbody>
+</mujoco>
