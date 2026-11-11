@@ -1,10 +1,16 @@
-scene: tabletop             # sim/scenes/<scene>.xml
+scene: tabletop             # sim/scenes/<scene>.xml; `--scene cube_hands` on sim.run overrides it.
+                            # The calibration scripts read this too and need the board, which only tabletop has.
 rig: rig.yaml               # relative to this file
 
 feed:
   host: 127.0.0.1           # 0.0.0.0 to let another machine subscribe (e.g. the Ubuntu box later)
   port: 5555
   queue_messages: 10        # ZMQ high-water mark, ~2 frames of 4 cameras + truth; slow consumers drop old frames, like a real camera
+
+# Scenes that list poses in configs/scenes/<scene>.yaml are placed, not simulated.
+pose_hold_s: 3.0            # how long the live feed shows each pose before moving to the next
+allowed_overlap_m: 0.002    # a pose is refused if a hand, the cube or the table sink into each other deeper
+                            # than this. Not zero, because shapes that only touch report a tiny overlap.
 
 speed_warn_below: 0.95      # print when the sim runs slower than this fraction of real time
 speed_report_s: 2.0         # how often to check

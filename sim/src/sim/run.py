@@ -8,6 +8,7 @@ import mujoco
 import yaml
 
 from sim.feed import Publisher
+from sim.poses import Poser, held_pose_index, load_scene_poses
 from sim.render import RigRenderer
 from sim.rig import Rig, load_rig
 from sim.world import build_model
@@ -25,22 +26,45 @@ def make_truth(model: mujoco.MjModel, data: mujoco.MjData, rig: Rig, frame: int)
     return {"frame": frame, "t": data.time, "cameras": cameras, "bodies": bodies}
 
 
+def frame_advancer(cfg: dict, config_dir: Path, scene: str, model: mujoco.MjModel, data: mujoco.MjData, fps: float):
+    scene_config = config_dir / "scenes" / f"{scene}.yaml"
+    scene_poses = load_scene_poses(scene_config) if scene_config.exists() else None
+    if scene_poses is None or not scene_poses.poses:
+        def step_physics_to(frame: int) -> None:
+            while data.time < frame / fps:
+                mujoco.mj_step(model, data)
+        return step_physics_to, "physics"
+
+    poses = scene_poses.poses
+    poser = Poser(model, scene_poses)
+    poser.require_no_overlaps(data, poses, cfg["allowed_overlap_m"])
+
+    def place_held_pose_at(frame: int) -> None:
+        poser.place(data, poses[held_pose_index(frame, fps, cfg["pose_hold_s"], len(poses))])
+        data.time = frame / fps
+    return place_held_pose_at, f"{len(poses)} poses held {cfg['pose_hold_s']:g} s each, no physics"
+
+
 def main():
     parser = argparse.ArgumentParser(
         description="Run the sim and stream every rig camera live. If rendering can't keep up, "
                     "sim time slows down instead of dropping frames.")
     parser.add_argument("--config", type=Path, default=DEFAULT_CONFIG)
-    config_path = parser.parse_args().config
+    parser.add_argument("--scene", help="scene to load instead of the one named in the config")
+    args = parser.parse_args()
+    config_path = args.config
     cfg = yaml.safe_load(config_path.read_text())
+    scene = args.scene or cfg["scene"]
 
     rig = load_rig(config_path.parent / cfg["rig"])
-    model = build_model(cfg["scene"], rig)
+    model = build_model(scene, rig)
     data = mujoco.MjData(model)
     mujoco.mj_forward(model, data)
+    advance_to, mode = frame_advancer(cfg, config_path.parent, scene, model, data, rig.fps)
     renderer = RigRenderer(model, rig)
     feed = cfg["feed"]
     pub = Publisher(feed["host"], feed["port"], feed["queue_messages"])
-    print(f"sim: scene '{cfg['scene']}', {len(rig.cameras)} cameras "
+    print(f"sim: scene '{scene}' ({mode}), {len(rig.cameras)} cameras "
           f"({', '.join(c.name for c in rig.cameras)}) at {rig.fps:g} fps -> {pub.address}  (Ctrl+C to stop)")
 
     signal.signal(signal.SIGTERM, lambda *_: sys.exit(0))
@@ -49,8 +73,7 @@ def main():
     report_wall, report_sim = wall_time_at_sim_zero, 0.0
     try:
         while True:
-            while data.time < frame / rig.fps:
-                mujoco.mj_step(model, data)
+            advance_to(frame)
             frames = renderer.render(data)
             for cam in rig.cameras:
                 pub.send_frame(cam, frame, data.time, *frames[cam.name])

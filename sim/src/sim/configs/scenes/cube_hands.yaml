@@ -1,0 +1,62 @@
+# Describes scenes/cube_hands.xml to the poser (sim/poses.py): what it may move, and the poses to show.
+# Table coordinates: metres, z up, table top at z = 0.75, x along the long side. The person stands at the
+# long side at negative y, so arms reach in along +y.
+# Poses only set up what the cameras see. Nothing is learned from these numbers.
+
+objects:                  # name used in poses -> body with a free joint in the scene file
+  cube: cube
+
+hands:                    # name used in poses -> names in the scene file
+  right: {mocap_body: hand_right, palm_body: right/rh_palm, joint_prefix: right/rh_}
+  left:  {mocap_body: hand_left,  palm_body: left/lh_palm,  joint_prefix: left/lh_}
+
+finger_shapes:            # joint angles in radians by joint name without the side prefix; missing = 0.
+  open: {}                # The same angles give the mirrored shape on the left hand.
+  # The two grasps were found by closing each finger until it touched a 5 cm cube, so they only fit the
+  # palm-to-cube offsets used in hand_around_cube and cube_lifted below.
+  wrap_cube: {FFJ3: 0.502, FFJ2: 0.502, FFJ1: 0.384, MFJ3: 0.502, MFJ2: 0.502, MFJ1: 0.384,
+              RFJ3: 0.502, RFJ2: 0.502, RFJ1: 0.384, LFJ3: 0.502, LFJ2: 0.502, LFJ1: 0.384,
+              THJ5: 0.6, THJ4: 0.852, THJ2: 0.3, THJ1: 0.355}
+  pinch_cube: {FFJ3: 0.848, FFJ2: 0.324, FFJ1: 0.162, MFJ3: 0.903, MFJ2: 0.345, MFJ1: 0.173,
+               RFJ3: 1.1, RFJ2: 0.9, RFJ1: 0.4, LFJ3: 1.2, LFJ2: 1.0, LFJ1: 0.5,
+               THJ5: 0.2, THJ4: 1.2, THJ2: 0.007, THJ1: 0.01}
+
+poses:
+  # cube:  pos [x, y] rests it on the table; [x, y, z] puts its centre at z. yaw_deg turns it about z.
+  # hands: palm_pos is the palm body's origin (the wrist end of the palm), fingers_point and palm_faces are
+  #        directions; palm_faces is squared up against fingers_point if not exactly perpendicular.
+  #        An open hand lying flat on the table has its palm at z = 0.775.
+  - name: hands_apart          # both hands and the cube in the open
+    cube:  {pos: [0.0, 0.05], yaw_deg: 20}
+    right: {palm_pos: [0.25, -0.20, 0.775], fingers_point: [0, 1, 0], palm_faces: [0, 0, -1], fingers: open}
+    left:  {palm_pos: [-0.25, -0.20, 0.775], fingers_point: [0, 1, 0], palm_faces: [0, 0, -1], fingers: open}
+
+  - name: hand_beside_cube     # right thumb tip against the cube's side
+    cube:  {pos: [0.0, 0.0]}
+    right: {palm_pos: [0.139, -0.10, 0.775], fingers_point: [0, 1, 0], palm_faces: [0, 0, -1], fingers: open}
+    left:  {palm_pos: [-0.30, -0.20, 0.775], fingers_point: [0, 1, 0], palm_faces: [0, 0, -1], fingers: open}
+
+  - name: hand_above_cube      # right hand hovering over the cube, hiding it from some cameras
+    cube:  {pos: [0.0, 0.0], yaw_deg: 30}
+    right: {palm_pos: [0.0, -0.11, 0.87], fingers_point: [0, 1, 0], palm_faces: [0, 0, -1], fingers: open}
+    left:  {palm_pos: [-0.30, -0.20, 0.775], fingers_point: [0, 1, 0], palm_faces: [0, 0, -1], fingers: open}
+
+  - name: hand_around_cube     # right hand wrapped over the cube on the table; palm = cube + [0, -0.09, 0.05]
+    cube:  {pos: [0.05, 0.05]}
+    right: {palm_pos: [0.05, -0.04, 0.825], fingers_point: [0, 1, 0], palm_faces: [0, 0, -1], fingers: wrap_cube}
+    left:  {palm_pos: [-0.30, -0.20, 0.775], fingers_point: [0, 1, 0], palm_faces: [0, 0, -1], fingers: open}
+
+  - name: cube_lifted          # left hand pinching the cube 15 cm above the table; palm = cube + [-0.035, -0.10, 0.085]
+    cube:  {pos: [-0.05, 0.0, 0.90]}
+    right: {palm_pos: [0.30, -0.20, 0.775], fingers_point: [0, 1, 0], palm_faces: [0, 0, -1], fingers: open}
+    left:  {palm_pos: [-0.085, -0.10, 0.985], fingers_point: [0, 1, 0], palm_faces: [0, 0, -1], fingers: pinch_cube}
+
+  - name: hands_overlapping    # left hand crossing above the right, hiding part of it
+    cube:  {pos: [0.20, 0.10], yaw_deg: 10}
+    right: {palm_pos: [0.03, -0.15, 0.775], fingers_point: [-0.25, 1, 0], palm_faces: [0, 0, -1], fingers: open}
+    left:  {palm_pos: [-0.06, -0.12, 0.84], fingers_point: [0.45, 1, 0], palm_faces: [0, 0, -1], fingers: open}
+
+  - name: hands_touching       # side by side on the table, thumb tips touching
+    cube:  {pos: [0.0, 0.15], yaw_deg: 45}
+    right: {palm_pos: [0.107, -0.15, 0.775], fingers_point: [0, 1, 0], palm_faces: [0, 0, -1], fingers: open}
+    left:  {palm_pos: [-0.12, -0.15, 0.775], fingers_point: [0, 1, 0], palm_faces: [0, 0, -1], fingers: open}
