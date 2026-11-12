@@ -7,27 +7,44 @@ from pathlib import Path
 import mujoco
 import yaml
 
+from sim.boxes import BoxLimits
 from sim.feed import Publisher
 from sim.poses import Poser, held_pose_index, load_scene_poses
 from sim.render import RigRenderer
 from sim.rig import Rig, load_rig
+from sim.targets import TargetBoxes, load_targets
 from sim.world import build_model
 
 DEFAULT_CONFIG = Path(__file__).parent / "configs" / "sim.yaml"
 
 
-def make_truth(model: mujoco.MjModel, data: mujoco.MjData, rig: Rig, frame: int) -> dict:
+def make_truth(model: mujoco.MjModel, data: mujoco.MjData, rig: Rig, frame: int,
+               target_boxes: TargetBoxes | None = None) -> dict:
     bodies = {}
     for i in range(model.nbody):
         name = model.body(i).name
         if name and name != "world":
             bodies[name] = {"pos": data.xpos[i].tolist(), "quat_wxyz": data.xquat[i].tolist()}
     cameras = {cam.name: cam.T_world_cam.tolist() for cam in rig.cameras}
-    return {"frame": frame, "t": data.time, "cameras": cameras, "bodies": bodies}
+    truth = {"frame": frame, "t": data.time, "cameras": cameras, "bodies": bodies}
+    if target_boxes is not None:
+        truth["boxes"] = target_boxes.in_every_camera(data)
+    return truth
+
+
+def scene_config_path(config_dir: Path, scene: str) -> Path:
+    return config_dir / "scenes" / f"{scene}.yaml"
+
+
+def target_boxes_or_none_without_targets(cfg: dict, config_dir: Path, scene: str, model: mujoco.MjModel,
+                                         renderer: RigRenderer) -> TargetBoxes | None:
+    scene_config = scene_config_path(config_dir, scene)
+    targets = load_targets(scene_config) if scene_config.exists() else []
+    return TargetBoxes(model, renderer, targets, BoxLimits(**cfg["truth_boxes"])) if targets else None
 
 
 def frame_advancer(cfg: dict, config_dir: Path, scene: str, model: mujoco.MjModel, data: mujoco.MjData, fps: float):
-    scene_config = config_dir / "scenes" / f"{scene}.yaml"
+    scene_config = scene_config_path(config_dir, scene)
     scene_poses = load_scene_poses(scene_config) if scene_config.exists() else None
     if scene_poses is None or not scene_poses.poses:
         def step_physics_to(frame: int) -> None:
@@ -62,9 +79,11 @@ def main():
     mujoco.mj_forward(model, data)
     advance_to, mode = frame_advancer(cfg, config_path.parent, scene, model, data, rig.fps)
     renderer = RigRenderer(model, rig)
+    target_boxes = target_boxes_or_none_without_targets(cfg, config_path.parent, scene, model, renderer)
+    boxed = ", ".join(t.name for t in target_boxes.targets) if target_boxes else "nothing"
     feed = cfg["feed"]
     pub = Publisher(feed["host"], feed["port"], feed["queue_messages"])
-    print(f"sim: scene '{scene}' ({mode}), {len(rig.cameras)} cameras "
+    print(f"sim: scene '{scene}' ({mode}), truth boxes for {boxed}, {len(rig.cameras)} cameras "
           f"({', '.join(c.name for c in rig.cameras)}) at {rig.fps:g} fps -> {pub.address}  (Ctrl+C to stop)")
 
     signal.signal(signal.SIGTERM, lambda *_: sys.exit(0))
@@ -75,9 +94,9 @@ def main():
         while True:
             advance_to(frame)
             frames = renderer.render(data)
+            pub.send_truth(make_truth(model, data, rig, frame, target_boxes))
             for cam in rig.cameras:
                 pub.send_frame(cam, frame, data.time, *frames[cam.name])
-            pub.send_truth(make_truth(model, data, rig, frame))
             frame += 1
 
             now = time.perf_counter()

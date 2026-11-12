@@ -1,4 +1,4 @@
-# Describes scenes/cube_hands.xml to the poser (sim/poses.py): what it may move, and the poses to show.
+# Describes scenes/cube_hands.xml: what the poser (sim/poses.py) may move, the poses to show, and what gets a truth box.
 # Table coordinates: metres, z up, table top at z = 0.75, x along the long side. The person stands at the
 # long side at negative y, so arms reach in along +y.
 # Poses only set up what the cameras see. Nothing is learned from these numbers.
@@ -9,6 +9,12 @@ objects:                  # name used in poses -> body with a free joint in the 
 hands:                    # name used in poses -> names in the scene file
   right: {mocap_body: hand_right, palm_body: right/rh_palm, joint_prefix: right/rh_}
   left:  {mocap_body: hand_left,  palm_body: left/lh_palm,  joint_prefix: left/lh_}
+
+targets:                  # what gets a truth box (sim/targets.py): name -> class the detector learns, and
+                          # the body it starts at. A target is that body and every body below it.
+  cube:       {class: cube, body: cube}
+  hand_right: {class: hand, body: right/rh_wrist}    # from the wrist on: the forearm hides things but is
+  hand_left:  {class: hand, body: left/lh_wrist}     # not part of the hand box
 
 finger_shapes:            # joint angles in radians by joint name without the side prefix; missing = 0.
   open: {}                # The same angles give the mirrored shape on the left hand.

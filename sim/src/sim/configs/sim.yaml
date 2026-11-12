@@ -12,6 +12,12 @@ pose_hold_s: 3.0            # how long the live feed shows each pose before movi
 allowed_overlap_m: 0.002    # a pose is refused if a hand, the cube or the table sink into each other deeper
                             # than this. Not zero, because shapes that only touch report a tiny overlap.
 
+# Scenes that list targets in configs/scenes/<scene>.yaml get an exact box per target and camera in the
+# truth message. A box is always reported; it "counts" (is a training label, is scored) when both hold.
+truth_boxes:
+  min_visible_fraction: 0.10  # visible pixels / pixels with nothing in the way. The BOP benchmark's cut-off.
+  min_box_side_px: 8          # shorter side of the box. Our own pick; the 5 cm cube is about 50 px here.
+
 speed_warn_below: 0.95      # print when the sim runs slower than this fraction of real time
 speed_report_s: 2.0         # how often to check
 
