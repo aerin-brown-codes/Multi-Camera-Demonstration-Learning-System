@@ -59,9 +59,13 @@ def look_at(position, target) -> np.ndarray:
     return np.column_stack([right, down, forward])
 
 
+def load_profiles(path) -> dict[str, Profile]:
+    return {name: Profile(**p) for name, p in yaml.safe_load(Path(path).read_text())["profiles"].items()}
+
+
 def load_rig(path) -> Rig:
     cfg = yaml.safe_load(Path(path).read_text())
-    profiles = {name: Profile(**p) for name, p in cfg["profiles"].items()}
+    profiles = load_profiles(path)
     cameras = [
         Camera(
             name=c["name"],
@@ -95,3 +99,11 @@ def add_cameras(spec: mujoco.MjSpec, rig: Rig) -> None:
     g = spec.visual.global_
     g.offwidth = max([g.offwidth] + [c.profile.width for c in rig.cameras])
     g.offheight = max([g.offheight] + [c.profile.height for c in rig.cameras])
+
+
+def replace_camera_of_the_same_name(model: mujoco.MjModel, data: mujoco.MjData, rig: Rig, cam: Camera) -> None:
+    rig.cameras[[c.name for c in rig.cameras].index(cam.name)] = cam
+    in_model = model.camera(cam.name).id
+    model.cam_pos[in_model] = cam.position
+    model.cam_quat[in_model] = mujoco_quat(cam.R_world_cam)
+    mujoco.mj_camlight(model, data)

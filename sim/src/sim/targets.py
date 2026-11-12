@@ -7,6 +7,7 @@ import yaml
 
 from sim.boxes import BoxLimits, target_box_or_none_when_out_of_view
 from sim.render import NO_GEOM, RigRenderer
+from sim.rig import Camera
 
 NO_TARGET = -1
 
@@ -51,14 +52,15 @@ class TargetBoxes:
         self._geoms_of = [self._target_of_geom == index for index in range(len(targets))]
 
     def in_every_camera(self, data: mujoco.MjData) -> dict[str, dict[str, dict]]:
+        return {cam.name: self.in_camera(data, cam) for cam in self._renderer.rig.cameras}
+
+    def in_camera(self, data: mujoco.MjData, cam: Camera) -> dict[str, dict]:
+        geom = self._renderer.geom_at_each_pixel(data, cam)
+        target_at_each_pixel = np.where(geom == NO_GEOM, NO_TARGET, self._target_of_geom[geom])
         boxes = {}
-        for cam in self._renderer.rig.cameras:
-            geom = self._renderer.geom_at_each_pixel(data, cam)
-            target_at_each_pixel = np.where(geom == NO_GEOM, NO_TARGET, self._target_of_geom[geom])
-            boxes[cam.name] = {}
-            for index, target in enumerate(self.targets):
-                alone = self._renderer.geom_at_each_pixel(data, cam, drawing_only=self._geoms_of[index]) != NO_GEOM
-                box = target_box_or_none_when_out_of_view(target_at_each_pixel == index, alone, self._limits)
-                if box is not None:
-                    boxes[cam.name][target.name] = {"class": target.class_name, **asdict(box)}
+        for index, target in enumerate(self.targets):
+            alone = self._renderer.geom_at_each_pixel(data, cam, drawing_only=self._geoms_of[index]) != NO_GEOM
+            box = target_box_or_none_when_out_of_view(target_at_each_pixel == index, alone, self._limits)
+            if box is not None:
+                boxes[target.name] = {"class": target.class_name, **asdict(box)}
         return boxes

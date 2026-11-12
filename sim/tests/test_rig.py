@@ -1,11 +1,15 @@
 from pathlib import Path
+from types import SimpleNamespace
 
 import mujoco
 import numpy as np
 import pytest
 
 import sim
-from sim.rig import OPENCV_TO_MUJOCO_CAMERA_AXES, Camera, Profile, Rig, add_cameras, load_rig, look_at
+from sim.render import RigRenderer
+from sim.rig import (OPENCV_TO_MUJOCO_CAMERA_AXES, Camera, Profile, Rig, add_cameras, load_profiles, load_rig,
+                     look_at, replace_camera_of_the_same_name)
+from sim.world import build_model
 
 RIG_YAML = Path(sim.__file__).parent / "configs" / "rig.yaml"
 
@@ -93,3 +97,35 @@ def test_rendered_points_land_where_opencv_predicts(profile):
     assert np.abs(errors).max() < 0.3, (
         f"max pixel error {np.abs(errors).max():.3f}: check opencv_to_mujoco_principal_pixel, "
         "MuJoCo's principal offset has both signs flipped relative to OpenCV")
+
+
+def test_camera_moved_in_a_built_scene_sees_what_a_scene_built_with_it_there_sees():
+    profile = load_profiles(RIG_YAML)["d435"]
+    here = Camera("cam0", profile, np.array([0.6, -0.5, 1.4]), look_at([0.6, -0.5, 1.4], [0.0, 0.0, 0.75]))
+    there = Camera("cam0", profile, np.array([-0.4, 0.7, 1.1]), look_at([-0.4, 0.7, 1.1], [0.1, 0.0, 0.75]))
+    stays = Camera("cam1", profile, np.array([0.0, 0.0, 1.8]), look_at([0.0, 0.0, 1.8], [0.0, 0.0, 0.75]))
+
+    def seen(rig, move_to=None):
+        model = build_model("cube_hands", rig)
+        data = mujoco.MjData(model)
+        mujoco.mj_forward(model, data)
+        renderer = RigRenderer(model, rig)
+        try:
+            before = renderer.render_camera(data, rig.cameras[0])[0].copy()
+            if move_to is not None:
+                replace_camera_of_the_same_name(model, data, rig, move_to)
+            cam = rig.cameras[0]
+            rgb, depth = renderer.render_camera(data, cam)
+            rgb, depth = rgb.copy(), depth.copy()
+            return SimpleNamespace(cam=cam, before=before, rgb=rgb, depth=depth,
+                                   geoms=renderer.geom_at_each_pixel(data, cam),
+                                   other_camera=renderer.render_camera(data, rig.cameras[1])[0].copy())
+        finally:
+            renderer.close()
+
+    moved, built_there = seen(Rig(0.0, [here, stays]), move_to=there), seen(Rig(0.0, [there, stays]))
+    assert moved.cam is there, "the rig must hold the camera the model now has, or labels go with the wrong image"
+    assert not np.array_equal(moved.before, moved.rgb), "the view changed"
+    assert np.array_equal(moved.rgb, built_there.rgb), "colour, lit by the light that follows the camera"
+    assert np.array_equal(moved.depth, built_there.depth) and np.array_equal(moved.geoms, built_there.geoms)
+    assert np.array_equal(moved.other_camera, built_there.other_camera), "other cameras stay put"

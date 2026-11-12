@@ -8,7 +8,7 @@ import pytest
 import yaml
 
 import sim
-from sim.poses import (HandPose, ObjectPose, Pose, PoseOverlap, Poser, T_world_palm, held_pose_index,
+from sim.poses import (HandPose, ObjectPose, Pose, PoseOverlap, Poser, T_of_body, T_world_palm, held_pose_index,
                        load_scene_poses, R_world_palm_with_fingers_along_z_and_palm_facing_minus_y)
 from sim.rig import load_rig
 from sim.run import frame_advancer, make_truth
@@ -17,6 +17,8 @@ from sim.world import build_model
 CONFIGS = Path(sim.__file__).parent / "configs"
 SIM = yaml.safe_load((CONFIGS / "sim.yaml").read_text())
 ALLOWED_OVERLAP_M = SIM["allowed_overlap_m"]
+SCENE_FILE = CONFIGS / "scenes" / "cube_hands.yaml"
+ALLOWED_SELF_OVERLAP_M = yaml.safe_load((CONFIGS / "dataset.yaml").read_text())["poses"]["allowed_self_overlap_m"]
 TABLE_TOP_Z = 0.75
 TOUCHING_WITHIN_M = 0.001
 MIRRORED_WITHIN_M = 1e-6
@@ -145,10 +147,40 @@ def test_every_pose_in_the_file_passes_the_overlap_check(cube_hands):
     ("hand_around_cube", "hand_right", "cube"),
     ("cube_lifted", "hand_left", "cube"),
     ("hands_touching", "hand_right", "hand_left"),
+    ("hand_flat_on_cube", "hand_left", "cube"),
+    ("fingertip_on_cube", "hand_right", "cube"),
+    ("cube_pinched_on_table", "hand_right", "cube"),
+    ("cube_wrapped_hand_hovering", "hand_left", "cube"),
+    ("cube_gripped_from_side", "hand_right", "cube"),
+    ("cube_lifted_tilted", "hand_left", "cube"),
+    ("cube_on_palm", "hand_left", "cube"),
+    ("cube_held_palm_up", "hand_left", "cube"),
+    ("cube_in_fist", "hand_right", "cube"),
+    ("cube_in_fist", "hand_right", "hand_left"),
+    ("cube_between_palms", "hand_right", "cube"),
+    ("cube_between_palms", "hand_left", "cube"),
+    ("cube_passed", "hand_right", "cube"),
+    ("cube_passed", "hand_left", "cube"),
+    ("fingertips_touching", "hand_right", "hand_left"),
+    ("hand_resting_on_hand", "hand_right", "hand_left"),
+    ("wrists_crossed", "hand_right", "hand_left"),
 ])
 def test_poses_meant_to_touch_do_touch(cube_hands, name, owner_a, owner_b):
     cube_hands.poser.place(cube_hands.data, cube_hands.poses[name])
     assert closest_m(cube_hands, owner_a, owner_b) < TOUCHING_WITHIN_M
+
+
+@pytest.mark.parametrize("name,owner_a,owner_b", [
+    ("hands_cupped_around_cube", "hand_right", "cube"),
+    ("hands_cupped_around_cube", "hand_left", "cube"),
+    ("hands_cupped_around_cube", "hand_right", "hand_left"),
+    ("cube_wrapped_hand_hovering", "hand_right", "hand_left"),
+    ("cube_wrapped_hand_hovering", "hand_right", "cube"),
+    ("both_fists", "hand_right", "hand_left"),
+])
+def test_poses_meant_to_stay_apart_do_not_touch(cube_hands, name, owner_a, owner_b):
+    cube_hands.poser.place(cube_hands.data, cube_hands.poses[name])
+    assert closest_m(cube_hands, owner_a, owner_b) > TOUCHING_WITHIN_M
 
 
 def test_hovering_and_crossing_poses_hide_without_touching(cube_hands):
@@ -160,6 +192,11 @@ def test_hovering_and_crossing_poses_hide_without_touching(cube_hands):
     assert closest_m(s, "hand_right", "hand_left") > TOUCHING_WITHIN_M
     over = body_pos(s, "left/lh_mfknuckle") - body_pos(s, "right/rh_mfknuckle")
     assert np.linalg.norm(over[:2]) < 0.05 and over[2] > 0.03, "the left hand must be above the right one"
+    s.poser.place(s.data, s.poses["cube_wrapped_hand_hovering"])
+    over = body_pos(s, "right/rh_mfknuckle") - body_pos(s, "left/lh_mfknuckle")
+    assert np.linalg.norm(over[:2]) < 0.05 and over[2] > 0.03, "the right hand must be above the left one"
+    s.poser.place(s.data, s.poses["hands_cupped_around_cube"])
+    assert max(closest_m(s, "hand_right", "cube"), closest_m(s, "hand_left", "cube")) < 0.03, "cupped means close"
 
 
 @pytest.mark.parametrize("right,left,owners,parts", [
@@ -179,6 +216,8 @@ def test_pose_pushed_into_something_is_rejected_naming_the_pair(cube_hands, righ
     s.poser.place(s.data, bad)
     found = {frozenset(o.owners): o for o in s.poser.overlaps(s.data, ALLOWED_OVERLAP_M)}
     assert set(found) == {frozenset(owners)}
+    assert not s.poser.overlaps_of_a_thing_with_itself(s.data, ALLOWED_SELF_OVERLAP_M), (
+        "two things sunk into each other are not one thing sunk into itself")
     if parts:
         assert set(found[frozenset(owners)].parts) == parts, "MuJoCo reports no contact between shapes that cannot move"
     with pytest.raises(PoseOverlap, match="pose 'test'.*" + ".*".join(found[frozenset(owners)].owners)):
@@ -208,10 +247,10 @@ def test_impossible_finger_angles_are_refused(cube_hands, joints, complaint):
 
 def test_unknown_finger_shape_is_refused_when_the_file_loads(tmp_path):
     cfg = yaml.safe_load((CONFIGS / "scenes" / "cube_hands.yaml").read_text())
-    cfg["poses"][0]["right"]["fingers"] = "fist"
+    cfg["poses"][0]["right"]["fingers"] = "shape_nobody_wrote"
     path = tmp_path / "scene.yaml"
     path.write_text(yaml.safe_dump(cfg))
-    with pytest.raises(ValueError, match="no finger shape named 'fist'"):
+    with pytest.raises(ValueError, match="no finger shape named 'shape_nobody_wrote'"):
         load_scene_poses(path)
 
 
@@ -246,3 +285,115 @@ def test_scene_without_poses_still_runs_physics():
     advance_to(30)
     assert 1.0 <= data.time < 1.0 + 2 * model.opt.timestep
     assert data.body("brick_red").xpos[2] < start_z - 0.001, "bricks start 2 mm up and must settle"
+
+
+def scene_with_one_pose(tmp_path, **changes_to_the_pose):
+    cfg = yaml.safe_load(SCENE_FILE.read_text())
+    high_above_the_table = {"fingers_point": AWAY_FROM_PERSON, "palm_faces": PALM_DOWN, "fingers": "open"}
+    cfg["poses"] = [{"name": "test", "cube": {"pos": [0.0, 0.2, 1.0]},
+                     "right": {"palm_pos": [0.3, 0.0, 1.0], **high_above_the_table},
+                     "left": {"palm_pos": [-0.3, 0.0, 1.0], **high_above_the_table}}]
+    for name, change in changes_to_the_pose.items():
+        if name == "together":
+            cfg["poses"][0]["together"] = change
+        else:
+            cfg["poses"][0][name].update(change)
+    path = tmp_path / "scene.yaml"
+    path.write_text(yaml.safe_dump(cfg))
+    return path
+
+
+def forearm_and_palm(s, pose_to_place):
+    s.poser.place(s.data, pose_to_place)
+    return {side: SimpleNamespace(elbow_end=s.data.geom(f"{side}/{side[0]}h_forearm").xpos.copy(),
+                                  palm=T_of_body(s.data, s.model.body(f"{side}/{side[0]}h_palm").id))
+            for side in ("right", "left")}
+
+
+def test_wrist_setting_moves_the_forearm_and_leaves_the_palm_where_it_was(cube_hands, tmp_path):
+    s = cube_hands
+    straight = forearm_and_palm(s, load_scene_poses(scene_with_one_pose(tmp_path)).poses[0])
+    raised = forearm_and_palm(s, load_scene_poses(scene_with_one_pose(
+        tmp_path, right={"wrist": {"bend_deg": -30}}, left={"wrist": {"bend_deg": -30}})).poses[0])
+    swung = forearm_and_palm(s, load_scene_poses(scene_with_one_pose(
+        tmp_path, right={"wrist": {"side_deg": -20}}, left={"wrist": {"side_deg": -20}})).poses[0])
+    for side, away_from_the_thumb in (("right", 1.0), ("left", -1.0)):
+        for bent in (raised, swung):
+            assert np.allclose(bent[side].palm, straight[side].palm, atol=1e-6), "the palm must not move"
+        lifted = raised[side].elbow_end - straight[side].elbow_end
+        assert lifted[2] > 0.05 and abs(lifted[0]) < 1e-6, (
+            f"bend_deg below 0 raises the forearm of a palm-down hand, here by {lifted[2] * 100:.1f} cm")
+        sideways = swung[side].elbow_end - straight[side].elbow_end
+        assert away_from_the_thumb * sideways[0] > 0.03 and abs(sideways[2]) < 1e-6, (
+            "side_deg below 0 swings the forearm away from the thumb's side, mirrored on the left hand")
+    assert np.allclose(raised["left"].elbow_end, raised["right"].elbow_end * [-1, 1, 1], atol=MIRRORED_WITHIN_M)
+
+
+def test_wrist_limits_are_the_hand_files_own(cube_hands):
+    for hand_name in ("right", "left"):
+        ranges = cube_hands.poser.joint_ranges_rad(hand_name)
+        assert np.allclose(np.rad2deg(ranges["WRJ1"]), [-40, 28], atol=0.5), "bend_deg, as the scene file says"
+        assert np.allclose(np.rad2deg(ranges["WRJ2"]), [-30, 10], atol=0.5), "side_deg, as the scene file says"
+        assert "FFJ3" in ranges and len(ranges) > 20
+
+
+@pytest.mark.parametrize("changes,complaint", [
+    ({"right": {"wrist": {"twist_deg": 10}}}, r"wrist has no setting 'twist_deg', only \['bend_deg', 'side_deg'\]"),
+    ({"together": ["cube", "middle"]}, r"together names \['middle'\], which the scene does not have"),
+])
+def test_unknown_wrist_setting_or_group_member_is_refused_when_the_file_loads(tmp_path, changes, complaint):
+    with pytest.raises(ValueError, match=complaint):
+        load_scene_poses(scene_with_one_pose(tmp_path, **changes))
+
+
+def test_wrist_set_by_both_the_finger_shape_and_the_pose_is_refused(tmp_path):
+    path = scene_with_one_pose(tmp_path, right={"wrist": {"bend_deg": 10}, "fingers": "bent_wrist"})
+    cfg = yaml.safe_load(path.read_text())
+    cfg["finger_shapes"]["bent_wrist"] = {"WRJ1": 0.2}
+    path.write_text(yaml.safe_dump(cfg))
+    with pytest.raises(ValueError, match="finger shape 'bent_wrist' already sets the wrist joint WRJ1"):
+        load_scene_poses(path)
+
+
+def test_group_and_tilt_are_read_from_the_file(tmp_path):
+    loaded = load_scene_poses(scene_with_one_pose(
+        tmp_path, together=["cube", "left"], cube={"tilt_deg": [10, -20], "yaw_deg": 30})).poses[0]
+    assert loaded.together == ("cube", "left")
+    assert np.allclose(np.rad2deg(loaded.objects["cube"].roll_pitch_rad), [10, -20])
+    assert load_scene_poses(scene_with_one_pose(tmp_path)).poses[0].together == ()
+
+
+@pytest.mark.parametrize("yaw_deg,roll_deg,pitch_deg,cube_axis,points_along", [
+    (0, 90, 0, "y", [0, 0, 1]),
+    (0, 0, 90, "x", [0, 0, -1]),
+    (90, 0, 90, "y", [-1, 0, 0]),
+    (0, 90, 90, "z", [0, -1, 0]),
+    (90, 90, 90, "z", [1, 0, 0]),
+])
+def test_cube_is_rolled_about_its_x_then_pitched_about_y_then_turned_about_the_vertical(
+        cube_hands, yaw_deg, roll_deg, pitch_deg, cube_axis, points_along):
+    s = cube_hands
+    tilted = ObjectPose(np.array([0.0, 0.2]), 1.0, np.deg2rad(yaw_deg), tuple(np.deg2rad([roll_deg, pitch_deg])))
+    s.poser.place(s.data, Pose("test", {"cube": tilted}, {"right": RIGHT_OUT_OF_THE_WAY, "left": LEFT_OUT_OF_THE_WAY}))
+    R_world_cube = s.data.body("cube").xmat.reshape(3, 3)
+    assert np.allclose(R_world_cube[:, "xyz".index(cube_axis)], points_along, atol=1e-9)
+    assert np.allclose(s.data.body("cube").xpos, [0.0, 0.2, 1.0])
+
+
+def test_fingers_sunk_into_each_other_are_found_only_by_the_check_of_a_thing_with_itself(cube_hands):
+    s = cube_hands
+    first_and_middle_fingers_crossed = {"FFJ4": 0.349, "MFJ4": -0.349}
+    s.poser.place(s.data, pose(hand([0.3, 0, 1.0], joints=first_and_middle_fingers_crossed), LEFT_OUT_OF_THE_WAY))
+    assert not s.poser.overlaps(s.data, ALLOWED_OVERLAP_M), "one hand is one thing to the check between things"
+    (crossed,) = s.poser.overlaps_of_a_thing_with_itself(s.data, ALLOWED_SELF_OVERLAP_M)
+    assert crossed.owners == ("hand_right", "hand_right") and crossed.depth_m > 0.01
+    assert set(crossed.parts) == {"right/rh_ffproximal", "right/rh_mfproximal"}
+    assert not s.poser.overlaps_of_a_thing_with_itself(s.data, crossed.depth_m), "deeper than it is: nothing"
+
+
+def test_no_pose_in_the_file_has_a_hand_sunk_into_itself(cube_hands):
+    s = cube_hands
+    for p in s.scene.poses:
+        s.poser.place(s.data, p)
+        sunk = s.poser.overlaps_of_a_thing_with_itself(s.data, ALLOWED_SELF_OVERLAP_M)
+        assert not sunk, f"pose '{p.name}': " + "; ".join(map(str, sunk)) + " (the dataset would never use it)"
