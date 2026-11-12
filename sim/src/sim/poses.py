@@ -1,4 +1,4 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 import mujoco
@@ -15,6 +15,7 @@ class ObjectPose:
     xy: np.ndarray
     z_or_none_for_resting: float | None
     yaw_rad: float
+    roll_pitch_rad: tuple[float, float] = (0.0, 0.0)
 
 
 @dataclass(frozen=True)
@@ -28,6 +29,7 @@ class Pose:
     name: str
     objects: dict[str, ObjectPose]
     hands: dict[str, HandPose]
+    together: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -42,6 +44,7 @@ class ScenePoses:
     object_bodies: dict[str, str]
     hand_bodies: dict[str, HandBodies]
     poses: list[Pose]
+    wrist_joints: dict[str, str] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -85,22 +88,39 @@ def load_scene_poses(path) -> ScenePoses:
     cfg = yaml.safe_load(Path(path).read_text())
     shapes = cfg.get("finger_shapes", {})
     objects, hands = cfg.get("objects", {}), cfg.get("hands", {})
+    wrist_joints = cfg.get("wrist_joints", {})
 
     def hand_pose(pose_name, h):
         if h["fingers"] not in shapes:
             raise ValueError(f"pose '{pose_name}': no finger shape named '{h['fingers']}'")
-        return HandPose(T_world_palm(h["palm_pos"], h["fingers_point"], h["palm_faces"]), dict(shapes[h["fingers"]]))
+        angles = dict(shapes[h["fingers"]])
+        for setting, degrees in h.get("wrist", {}).items():
+            if setting not in wrist_joints:
+                raise ValueError(f"pose '{pose_name}': wrist has no setting '{setting}', only {sorted(wrist_joints)}")
+            if wrist_joints[setting] in angles:
+                raise ValueError(f"pose '{pose_name}': finger shape '{h['fingers']}' already sets the wrist joint "
+                                 f"{wrist_joints[setting]}")
+            angles[wrist_joints[setting]] = float(np.deg2rad(degrees))
+        return HandPose(T_world_palm(h["palm_pos"], h["fingers_point"], h["palm_faces"]), angles)
 
     def object_pose(o):
         pos = o["pos"]
+        roll_deg, pitch_deg = o.get("tilt_deg", (0.0, 0.0))
         return ObjectPose(np.array(pos[:2], float), float(pos[2]) if len(pos) == 3 else None,
-                          np.deg2rad(o.get("yaw_deg", 0.0)))
+                          np.deg2rad(o.get("yaw_deg", 0.0)), (np.deg2rad(roll_deg), np.deg2rad(pitch_deg)))
+
+    def moved_together(p):
+        unknown = set(p.get("together", [])) - objects.keys() - hands.keys()
+        if unknown:
+            raise ValueError(f"pose '{p['name']}': together names {sorted(unknown)}, which the scene does not have")
+        return tuple(p.get("together", []))
 
     poses = [
         Pose(
             name=p["name"],
             objects={name: object_pose(p[name]) for name in objects if name in p},
             hands={name: hand_pose(p["name"], p[name]) for name in hands if name in p},
+            together=moved_together(p),
         )
         for p in cfg.get("poses", [])
     ]
@@ -108,6 +128,7 @@ def load_scene_poses(path) -> ScenePoses:
         object_bodies=dict(objects),
         hand_bodies={name: HandBodies(**h) for name, h in hands.items()},
         poses=poses,
+        wrist_joints=dict(wrist_joints),
     )
 
 
@@ -129,8 +150,16 @@ def quat_wxyz(R) -> np.ndarray:
     return q
 
 
-def yaw_quat_wxyz(yaw_rad: float) -> np.ndarray:
-    return np.array([np.cos(yaw_rad / 2), 0.0, 0.0, np.sin(yaw_rad / 2)])
+def R_about_z(angle_rad: float) -> np.ndarray:
+    c, s = np.cos(angle_rad), np.sin(angle_rad)
+    return np.array([[c, -s, 0.0], [s, c, 0.0], [0.0, 0.0, 1.0]])
+
+
+def R_world_object_turned_about_z_after_pitch_after_roll(o: ObjectPose) -> np.ndarray:
+    (cr, sr), (cp, sp) = [(np.cos(a), np.sin(a)) for a in o.roll_pitch_rad]
+    R_roll = np.array([[1.0, 0.0, 0.0], [0.0, cr, -sr], [0.0, sr, cr]])
+    R_pitch = np.array([[cp, 0.0, sp], [0.0, 1.0, 0.0], [-sp, 0.0, cp]])
+    return R_about_z(o.yaw_rad) @ R_pitch @ R_roll
 
 
 class Poser:
@@ -154,6 +183,13 @@ class Poser:
         self._geom_owner, self._geom_part = self._name_geoms()
         self._pairs_mujoco_never_reports = self._pairs_of_geoms_that_cannot_move()
 
+    def resting_z(self, object_name: str) -> float:
+        return float(self.model.qpos0[self._object_qpos[object_name] + 2])
+
+    def joint_ranges_rad(self, hand: str) -> dict[str, tuple[float, float]]:
+        return {name: (float(self.model.jnt_range[j][0]), float(self.model.jnt_range[j][1]))
+                for name, j in self._hand_joints[hand].items()}
+
     def place(self, data: mujoco.MjData, pose: Pose) -> None:
         if pose.objects.keys() != self._object_qpos.keys() or pose.hands.keys() != self._hand_mocap.keys():
             raise ValueError(f"pose '{pose.name}' must place exactly "
@@ -161,9 +197,9 @@ class Poser:
                              f"got {sorted(pose.objects) + sorted(pose.hands)}")
         for name, o in pose.objects.items():
             adr = self._object_qpos[name]
-            z = self.model.qpos0[adr + 2] if o.z_or_none_for_resting is None else o.z_or_none_for_resting
+            z = self.resting_z(name) if o.z_or_none_for_resting is None else o.z_or_none_for_resting
             data.qpos[adr:adr + 3] = [*o.xy, z]
-            data.qpos[adr + 3:adr + 7] = yaw_quat_wxyz(o.yaw_rad)
+            data.qpos[adr + 3:adr + 7] = quat_wxyz(R_world_object_turned_about_z_after_pitch_after_roll(o))
         for name, h in pose.hands.items():
             self._write_joint_angles(data, pose.name, name, h.joint_angles_rad)
             data.mocap_pos[self._hand_mocap[name]] = 0
@@ -183,6 +219,16 @@ class Poser:
             pair, depth_m = frozenset(owners), -dist
             if depth_m > deeper_than_m and (pair not in deepest or depth_m > deepest[pair].depth_m):
                 deepest[pair] = Overlap(owners, (self._geom_part[g1], self._geom_part[g2]), depth_m)
+        return sorted(deepest.values(), key=lambda o: -o.depth_m)
+
+    def overlaps_of_a_thing_with_itself(self, data: mujoco.MjData, deeper_than_m: float) -> list[Overlap]:
+        deepest = {}
+        for c in data.contact[:data.ncon]:
+            owner, depth_m = self._geom_owner[c.geom1], -c.dist
+            if owner != self._geom_owner[c.geom2] or depth_m <= deeper_than_m:
+                continue
+            if owner not in deepest or depth_m > deepest[owner].depth_m:
+                deepest[owner] = Overlap((owner, owner), (self._geom_part[c.geom1], self._geom_part[c.geom2]), depth_m)
         return sorted(deepest.values(), key=lambda o: -o.depth_m)
 
     def require_no_overlaps(self, data: mujoco.MjData, poses: list[Pose], allowed_overlap_m: float) -> None:

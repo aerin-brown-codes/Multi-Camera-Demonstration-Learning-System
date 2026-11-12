@@ -219,3 +219,6 @@ __marimo__/
 
 # MuJoCo writes runtime warnings here (e.g. the harmless macOS ARB_clip_control depth warning)
 MUJOCO_LOG.TXT
+
+# Generated and downloaded image sets (sim/dataset.py writes datasets/sim; public sets are downloaded beside it)
+datasets/

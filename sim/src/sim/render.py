@@ -40,13 +40,13 @@ class RigRenderer:
         return np.flipud(self._reversed_z_to_metres(z_bottom_row_first))
 
     def render(self, data: mujoco.MjData) -> dict[str, tuple[np.ndarray, np.ndarray]]:
-        frames = {}
-        for cam in self.rig.cameras:
-            r = self._renderers[cam.profile.width, cam.profile.height]
-            r.update_scene(data, camera=cam.name)
-            rgb = r.render()
-            frames[cam.name] = rgb, to_depth_units(self._depth_buffer_of_last_render_m(r), cam.profile)
-        return frames
+        return {cam.name: self.render_camera(data, cam) for cam in self.rig.cameras}
+
+    def render_camera(self, data: mujoco.MjData, cam: Camera) -> tuple[np.ndarray, np.ndarray]:
+        r = self._renderers[cam.profile.width, cam.profile.height]
+        r.update_scene(data, camera=cam.name)
+        rgb = r.render()
+        return rgb, to_depth_units(self._depth_buffer_of_last_render_m(r), cam.profile)
 
     def geom_at_each_pixel(self, data: mujoco.MjData, cam: Camera,
                            drawing_only: np.ndarray | None = None) -> np.ndarray:

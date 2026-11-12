@@ -10,6 +10,8 @@ hands:                    # name used in poses -> names in the scene file
   right: {mocap_body: hand_right, palm_body: right/rh_palm, joint_prefix: right/rh_}
   left:  {mocap_body: hand_left,  palm_body: left/lh_palm,  joint_prefix: left/lh_}
 
+wrist_joints: {bend_deg: WRJ1, side_deg: WRJ2}    # the joint each wrist setting of a pose turns
+
 targets:                  # what gets a truth box (sim/targets.py): name -> class the detector learns, and
                           # the body it starts at. A target is that body and every body below it.
   cube:       {class: cube, body: cube}
@@ -26,12 +28,42 @@ finger_shapes:            # joint angles in radians by joint name without the si
   pinch_cube: {FFJ3: 0.848, FFJ2: 0.324, FFJ1: 0.162, MFJ3: 0.903, MFJ2: 0.345, MFJ1: 0.173,
                RFJ3: 1.1, RFJ2: 0.9, RFJ1: 0.4, LFJ3: 1.2, LFJ2: 1.0, LFJ1: 0.5,
                THJ5: 0.2, THJ4: 1.2, THJ2: 0.007, THJ1: 0.01}
+  # Plain shapes, not fitted to anything.
+  relaxed: {FFJ3: 0.25, FFJ2: 0.35, FFJ1: 0.2, MFJ3: 0.25, MFJ2: 0.35, MFJ1: 0.2,
+            RFJ3: 0.25, RFJ2: 0.35, RFJ1: 0.2, LFJ3: 0.25, LFJ2: 0.35, LFJ1: 0.2,
+            THJ5: 0.3, THJ4: 0.5, THJ1: 0.3}
+  cupped: {FFJ3: 0.35, FFJ2: 0.5, FFJ1: 0.35, MFJ3: 0.35, MFJ2: 0.5, MFJ1: 0.35,
+           RFJ3: 0.35, RFJ2: 0.5, RFJ1: 0.35, LFJ3: 0.35, LFJ2: 0.5, LFJ1: 0.35,
+           THJ5: 0.3, THJ4: 0.6, THJ1: 0.4}
+  fist: {FFJ3: 1.57, FFJ2: 1.57, FFJ1: 1.0, MFJ3: 1.57, MFJ2: 1.57, MFJ1: 1.0,
+         RFJ3: 1.57, RFJ2: 1.57, RFJ1: 1.0, LFJ3: 1.57, LFJ2: 1.57, LFJ1: 1.0,
+         THJ5: 0.2, THJ4: 1.2, THJ2: 0.4, THJ1: 1.25}
+  point: {MFJ3: 1.57, MFJ2: 1.57, MFJ1: 1.0, RFJ3: 1.57, RFJ2: 1.57, RFJ1: 1.0, LFJ3: 1.57, LFJ2: 1.57, LFJ1: 1.0,
+          THJ5: 0.2, THJ4: 1.2, THJ2: 0.4, THJ1: 1.25}    # a fist with the first finger straight
+  # Three more grasps found the same way. Each only fits the palm-to-cube offset of the pose named.
+  grip_side: {FFJ3: 0.684, FFJ2: 0.684, FFJ1: 0.684, MFJ3: 0.931, MFJ2: 0.931, MFJ1: 0.931,     # cube_gripped_from_side
+              RFJ3: 0.958, RFJ2: 0.958, RFJ1: 0.958, LFJ3: 0.958, LFJ2: 0.958, LFJ1: 0.958,
+              THJ5: -0.56, THJ4: 1.221, THJ2: 0.6, THJ1: 1.5}
+  fist_cube: {FFJ3: 1.112, FFJ2: 1.093, FFJ1: 0.003, MFJ3: 1.25, MFJ2: 0.793, MFJ1: 0.56,       # cube_in_fist
+              RFJ3: 0.865, RFJ2: 1.373, RFJ1: 0.001, LFJ3: 1.25, LFJ2: 1.57, LFJ1: 1.57,
+              THJ5: -0.12, THJ4: 1.221, THJ2: 0.6, THJ1: 1.13}
+  thumb_on_top: {FFJ3: 0.095, MFJ3: 0.107, RFJ3: 0.25, RFJ2: 0.45, RFJ1: 0.3, LFJ3: 0.35, LFJ2: 0.55, LFJ1: 0.35,
+                 THJ5: 0.72, THJ4: 1.2, THJ2: -0.32, THJ1: 0.38}                                 # cube_held_palm_up
 
 poses:
   # cube:  pos [x, y] rests it on the table; [x, y, z] puts its centre at z. yaw_deg turns it about z.
   # hands: palm_pos is the palm body's origin (the wrist end of the palm), fingers_point and palm_faces are
   #        directions; palm_faces is squared up against fingers_point if not exactly perpendicular.
   #        An open hand lying flat on the table has its palm at z = 0.775.
+  #        tilt_deg: [roll, pitch] tips the cube about its own x, then y, before yaw_deg turns it. Missing = flat.
+  # wrist: {bend_deg, side_deg} swings the forearm about the wrist; the palm stays where the pose puts it.
+  #        Missing = straight in the live feed, and free to vary in the dataset.
+  #        bend_deg -40 to 28: above 0 the forearm swings to the palm's side (down, for a palm facing down),
+  #        so a palm-down hand with a raised elbow has a negative bend.
+  #        side_deg -30 to 10: above 0 the forearm swings to the thumb's side.
+  # together: [names] are the things the pose is about: they touch, or one hides or surrounds the other.
+  #        The dataset (sim/pose_variation.py) shifts and turns them as one group and places the rest at
+  #        random. Missing = the whole pose is one group.
   - name: hands_apart          # both hands and the cube in the open
     cube:  {pos: [0.0, 0.05], yaw_deg: 20}
     right: {palm_pos: [0.25, -0.20, 0.775], fingers_point: [0, 1, 0], palm_faces: [0, 0, -1], fingers: open}
@@ -41,28 +73,147 @@ poses:
     cube:  {pos: [0.0, 0.0]}
     right: {palm_pos: [0.139, -0.10, 0.775], fingers_point: [0, 1, 0], palm_faces: [0, 0, -1], fingers: open}
     left:  {palm_pos: [-0.30, -0.20, 0.775], fingers_point: [0, 1, 0], palm_faces: [0, 0, -1], fingers: open}
+    together: [cube, right]
 
   - name: hand_above_cube      # right hand hovering over the cube, hiding it from some cameras
     cube:  {pos: [0.0, 0.0], yaw_deg: 30}
     right: {palm_pos: [0.0, -0.11, 0.87], fingers_point: [0, 1, 0], palm_faces: [0, 0, -1], fingers: open}
     left:  {palm_pos: [-0.30, -0.20, 0.775], fingers_point: [0, 1, 0], palm_faces: [0, 0, -1], fingers: open}
+    together: [cube, right]
 
   - name: hand_around_cube     # right hand wrapped over the cube on the table; palm = cube + [0, -0.09, 0.05]
     cube:  {pos: [0.05, 0.05]}
     right: {palm_pos: [0.05, -0.04, 0.825], fingers_point: [0, 1, 0], palm_faces: [0, 0, -1], fingers: wrap_cube}
     left:  {palm_pos: [-0.30, -0.20, 0.775], fingers_point: [0, 1, 0], palm_faces: [0, 0, -1], fingers: open}
+    together: [cube, right]
 
   - name: cube_lifted          # left hand pinching the cube 15 cm above the table; palm = cube + [-0.035, -0.10, 0.085]
     cube:  {pos: [-0.05, 0.0, 0.90]}
     right: {palm_pos: [0.30, -0.20, 0.775], fingers_point: [0, 1, 0], palm_faces: [0, 0, -1], fingers: open}
     left:  {palm_pos: [-0.085, -0.10, 0.985], fingers_point: [0, 1, 0], palm_faces: [0, 0, -1], fingers: pinch_cube}
+    together: [cube, left]
 
   - name: hands_overlapping    # left hand crossing above the right, hiding part of it
     cube:  {pos: [0.20, 0.10], yaw_deg: 10}
     right: {palm_pos: [0.03, -0.15, 0.775], fingers_point: [-0.25, 1, 0], palm_faces: [0, 0, -1], fingers: open}
     left:  {palm_pos: [-0.06, -0.12, 0.84], fingers_point: [0.45, 1, 0], palm_faces: [0, 0, -1], fingers: open}
+    together: [right, left]
 
   - name: hands_touching       # side by side on the table, thumb tips touching
     cube:  {pos: [0.0, 0.15], yaw_deg: 45}
     right: {palm_pos: [0.107, -0.15, 0.775], fingers_point: [0, 1, 0], palm_faces: [0, 0, -1], fingers: open}
     left:  {palm_pos: [-0.12, -0.15, 0.775], fingers_point: [0, 1, 0], palm_faces: [0, 0, -1], fingers: open}
+    together: [right, left]
+
+  - name: hand_flat_on_cube    # left hand lying flat on top of the cube, hiding it; palm = cube + [0, -0.075, 0.0379]
+    cube:  {pos: [-0.10, 0.05], yaw_deg: 15}
+    right: {palm_pos: [0.30, -0.20, 0.775], fingers_point: [0, 1, 0], palm_faces: [0, 0, -1], fingers: open}
+    left:  {palm_pos: [-0.10, -0.025, 0.8129], fingers_point: [0, 1, 0], palm_faces: [0, 0, -1], fingers: open}
+    together: [cube, left]
+
+  - name: fingertip_on_cube    # right first finger pushing the near side of the cube, the other fingers curled
+    cube:  {pos: [0.05, 0.08]}
+    right: {palm_pos: [0.083, -0.1339, 0.85], fingers_point: [0, 1, -0.33], palm_faces: [0, -0.33, -1], fingers: point}
+    left:  {palm_pos: [-0.32, -0.20, 0.775], fingers_point: [0, 1, 0], palm_faces: [0, 0, -1], fingers: open}
+    together: [cube, right]
+
+  - name: cube_pinched_on_table    # right hand pinching the cube where it rests, left hand lying nearby;
+    cube:  {pos: [0.08, 0.02]}     # palm = cube + [0.035, -0.10, 0.085]
+    right: {palm_pos: [0.115, -0.08, 0.86], fingers_point: [0, 1, 0], palm_faces: [0, 0, -1], fingers: pinch_cube}
+    left:  {palm_pos: [-0.12, -0.10, 0.775], fingers_point: [0.2, 1, 0], palm_faces: [0, 0, -1], fingers: open}
+
+  - name: cube_wrapped_hand_hovering    # left hand wrapped over the cube, right hand hovering 3 cm above the left
+    cube:  {pos: [-0.05, 0.05]}         # without touching it; left palm = cube + [0, -0.09, 0.05]
+    right: {palm_pos: [0.02, -0.04, 0.90], fingers_point: [-0.45, 1, 0], palm_faces: [0, 0, -1], fingers: open}
+    left:  {palm_pos: [-0.05, -0.04, 0.825], fingers_point: [0, 1, 0], palm_faces: [0, 0, -1], fingers: wrap_cube}
+
+  - name: cube_gripped_from_side    # right hand on its side, thumb up, gripping the lifted cube between palm,
+    cube:  {pos: [0.05, 0.02, 0.90]}    # fingers and thumb; palm = cube + [0.037, -0.07, -0.022]
+    right: {palm_pos: [0.087, -0.05, 0.878], fingers_point: [0, 1, 0], palm_faces: [-1, 0, 0], fingers: grip_side}
+    left:  {palm_pos: [-0.32, -0.20, 0.775], fingers_point: [0, 1, 0], palm_faces: [0, 0, -1], fingers: open}
+    together: [cube, right]
+
+  - name: cube_lifted_tilted   # the same side grip in the left hand, cube and hand tipped as one
+    cube:  {pos: [-0.06, 0.03, 0.93], tilt_deg: [-25, 20], yaw_deg: 20}
+    right: {palm_pos: [0.32, -0.20, 0.775], fingers_point: [0, 1, 0], palm_faces: [0, 0, -1], fingers: open}
+    left:  {palm_pos: [-0.0647, -0.0491, 0.9517], fingers_point: [-0.4458, 0.8022, -0.3971],
+            palm_faces: [0.883, 0.3214, -0.342], fingers: grip_side}
+    together: [cube, left]
+
+  - name: cube_on_palm         # cube resting on the open left palm, palm up; cube = palm + [0.006, 0.068, 0.0379]
+    cube:  {pos: [-0.074, 0.008, 0.9079]}
+    right: {palm_pos: [0.32, -0.20, 0.775], fingers_point: [0, 1, 0], palm_faces: [0, 0, -1], fingers: open}
+    left:  {palm_pos: [-0.08, -0.06, 0.87], fingers_point: [0, 1, 0], palm_faces: [0, 0, 1], fingers: relaxed}
+    together: [cube, left]
+
+  - name: cube_held_palm_up    # cube lying on the left fingers, palm up, thumb pressing on top of it;
+    cube:  {pos: [-0.10, 0.04, 0.90]}    # palm = cube + [0.024, -0.105, -0.0377]
+    right: {palm_pos: [0.32, -0.20, 0.775], fingers_point: [0, 1, 0], palm_faces: [0, 0, -1], fingers: open}
+    left:  {palm_pos: [-0.076, -0.065, 0.8623], fingers_point: [0, 1, 0], palm_faces: [0, 0, 1], fingers: thumb_on_top}
+    together: [cube, left]
+
+  - name: cube_in_fist         # right fist closed around the lifted cube, palm = cube + [0.002, -0.068, 0.037];
+    cube:  {pos: [0.04, 0.03, 0.90]}     # left hand palm up under the fist, touching its first finger
+    right: {palm_pos: [0.042, -0.038, 0.937], fingers_point: [0, 1, 0], palm_faces: [0, 0, -1], fingers: fist_cube}
+    left:  {palm_pos: [-0.05, 0.0, 0.8361], fingers_point: [1, 0.45, 0], palm_faces: [0, 0, 1], fingers: relaxed}
+
+  - name: cube_between_palms   # lifted cube pressed between two flat palms; palms = cube + [+-0.0379, -0.065, 0.005]
+    cube:  {pos: [0.0, 0.02, 0.90]}
+    right: {palm_pos: [0.0379, -0.045, 0.905], fingers_point: [0, 1, 0], palm_faces: [-1, 0, 0], fingers: open}
+    left:  {palm_pos: [-0.0379, -0.045, 0.905], fingers_point: [0, 1, 0], palm_faces: [1, 0, 0], fingers: open}
+
+  - name: cube_passed          # cube handed over: each hand pinches it from its own side, the left a little higher;
+    cube:  {pos: [0.0, 0.03, 0.92]}      # palms = cube + [-0.085, -0.1003, -0.023] and cube + [0.085, -0.1003, -0.06]
+    right: {palm_pos: [0.085, -0.0703, 0.86], fingers_point: [0, 1, 0], palm_faces: [-1, 0, 0], fingers: pinch_cube}
+    left:  {palm_pos: [-0.085, -0.0703, 0.897], fingers_point: [0, 1, 0], palm_faces: [1, 0, 0], fingers: pinch_cube}
+
+  - name: hands_cupped_around_cube    # both hands on their sides around the cube, about 1 to 2 cm from it,
+    cube:  {pos: [0.0, 0.05], yaw_deg: 20}    # touching neither the cube nor each other
+    right: {palm_pos: [0.10, -0.04, 0.7923], fingers_point: [-0.2, 1, 0], palm_faces: [-1, -0.2, 0], fingers: cupped}
+    left:  {palm_pos: [-0.10, -0.04, 0.7923], fingers_point: [0.2, 1, 0], palm_faces: [1, -0.2, 0], fingers: cupped}
+
+  - name: hand_on_its_side     # left hand resting on its little-finger edge, thumb up
+    cube:  {pos: [0.15, 0.10], yaw_deg: 60}
+    right: {palm_pos: [0.32, -0.20, 0.775], fingers_point: [0, 1, 0], palm_faces: [0, 0, -1], fingers: open}
+    left:  {palm_pos: [-0.08, -0.12, 0.7923], fingers_point: [0.2, 1, 0], palm_faces: [1, -0.2, 0], fingers: relaxed}
+    together: [left]
+
+  - name: hand_palm_up         # right hand lying palm up, forearm on the table
+    cube:  {pos: [-0.15, 0.12], yaw_deg: 25}
+    right: {palm_pos: [0.08, -0.12, 0.7953], fingers_point: [-0.15, 1, 0], palm_faces: [0, 0, 1], fingers: relaxed}
+    left:  {palm_pos: [-0.32, -0.20, 0.775], fingers_point: [0, 1, 0], palm_faces: [0, 0, -1], fingers: open}
+    together: [right]
+
+  - name: hand_pointing_down   # right hand coming down from above, middle fingertip on the table
+    cube:  {pos: [-0.12, 0.10], yaw_deg: 40}
+    right: {palm_pos: [0.10, -0.02, 0.9426], fingers_point: [0, 0.4, -1], palm_faces: [0, -1, -0.4], fingers: relaxed}
+    left:  {palm_pos: [-0.32, -0.20, 0.775], fingers_point: [0, 1, 0], palm_faces: [0, 0, -1], fingers: open}
+    together: [right]
+
+  - name: both_fists           # two fists side by side, the right one on its side, the left one knuckles down
+    cube:  {pos: [0.25, 0.15], yaw_deg: 30}
+    right: {palm_pos: [0.02, -0.12, 0.7923], fingers_point: [-0.2, 1, 0], palm_faces: [-1, -0.2, 0], fingers: fist}
+    left:  {palm_pos: [-0.16, -0.10, 0.8266], fingers_point: [0.15, 1, 0], palm_faces: [0, 0, -1], fingers: fist}
+    together: [right, left]
+
+  - name: fingertips_touching  # both hands on their sides, middle fingertips meeting
+    cube:  {pos: [0.25, 0.15], yaw_deg: 35}
+    right: {palm_pos: [0.1191, -0.14, 0.7923], fingers_point: [-0.7, 1, 0], palm_faces: [-1, -0.7, 0], fingers: open}
+    left:  {palm_pos: [-0.115, -0.14, 0.7923], fingers_point: [0.7, 1, 0], palm_faces: [1, -0.7, 0], fingers: open}
+    together: [right, left]
+
+  - name: hand_resting_on_hand # left palm lying across the back of the right hand; the forearms must stay straight
+    cube:  {pos: [0.22, 0.12], yaw_deg: 15}
+    right: {palm_pos: [0.05, -0.15, 0.775], fingers_point: [0, 1, 0], palm_faces: [0, 0, -1], fingers: open,
+            wrist: {bend_deg: 0, side_deg: 0}}
+    left:  {palm_pos: [0.002, -0.106, 0.8096], fingers_point: [1, 0.3, 0], palm_faces: [0, 0, -1], fingers: open,
+            wrist: {bend_deg: 0, side_deg: 0}}
+    together: [right, left]
+
+  - name: wrists_crossed       # left forearm lying across the right one, left fingertips down on the table
+    cube:  {pos: [0.0, 0.18], yaw_deg: 25}
+    right: {palm_pos: [-0.02, -0.08, 0.775], fingers_point: [-0.5, 1, 0], palm_faces: [0, 0, -1], fingers: open,
+            wrist: {bend_deg: 0, side_deg: 0}}
+    left:  {palm_pos: [0.03, -0.085, 0.8254], fingers_point: [0.5, 1, -0.431], palm_faces: [-0.2155, -0.431, -1.25],
+            fingers: open, wrist: {bend_deg: 0, side_deg: 0}}
+    together: [right, left]
