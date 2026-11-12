@@ -1,7 +1,11 @@
 import mujoco
 import numpy as np
 
-from sim.rig import Profile, Rig
+from sim.rig import Camera, Profile, Rig
+
+NO_GEOM = -1
+GEOM_TYPE_AS_PLAIN_INT_BECAUSE_COMPARING_AN_IMAGE_WITH_THE_ENUM_IS_SLOW = int(mujoco.mjtObj.mjOBJ_GEOM)
+GEOM_GROUP_NOT_DRAWN_BY_DEFAULT = 5
 
 
 def to_depth_units(depth_m: np.ndarray, profile: Profile) -> np.ndarray:
@@ -16,6 +20,7 @@ def disable_multisampling_for_exact_depth(model: mujoco.MjModel) -> None:
 class RigRenderer:
     def __init__(self, model: mujoco.MjModel, rig: Rig):
         self.rig = rig
+        self._model = model
         disable_multisampling_for_exact_depth(model)
         self._renderers = {
             size: mujoco.Renderer(model, size[1], size[0])
@@ -42,6 +47,23 @@ class RigRenderer:
             rgb = r.render()
             frames[cam.name] = rgb, to_depth_units(self._depth_buffer_of_last_render_m(r), cam.profile)
         return frames
+
+    def geom_at_each_pixel(self, data: mujoco.MjData, cam: Camera,
+                           drawing_only: np.ndarray | None = None) -> np.ndarray:
+        r = self._renderers[cam.profile.width, cam.profile.height]
+        groups = self._model.geom_group
+        groups_before = groups.copy()
+        if drawing_only is not None:
+            groups[~drawing_only] = GEOM_GROUP_NOT_DRAWN_BY_DEFAULT
+        r.enable_segmentation_rendering()
+        try:
+            r.update_scene(data, camera=cam.name)
+            ids_and_types = r.render()
+        finally:
+            r.disable_segmentation_rendering()
+            groups[:] = groups_before
+        is_geom = ids_and_types[..., 1] == GEOM_TYPE_AS_PLAIN_INT_BECAUSE_COMPARING_AN_IMAGE_WITH_THE_ENUM_IS_SLOW
+        return np.where(is_geom, ids_and_types[..., 0], NO_GEOM)
 
     def close(self):
         for r in self._renderers.values():

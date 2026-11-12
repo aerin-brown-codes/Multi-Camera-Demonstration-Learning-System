@@ -1,6 +1,6 @@
 import numpy as np
 
-from sim.feed import Publisher, Subscriber, TruthSubscriber
+from sim.feed import Frame, FrameAndTruthSubscriber, Publisher, Subscriber, TruthSubscriber
 from sim.rig import Camera, Profile, look_at
 
 PROFILE = Profile(width=64, height=48, fx=50.0, fy=51.0, cx=31.5, cy=23.5,
@@ -67,4 +67,23 @@ def test_truth_never_reaches_frame_subscribers():
     assert frames.recv(timeout_ms=100) is None
     frames.close()
     truth.close()
+    pub.close()
+
+
+def test_truth_sent_before_its_frames_is_read_before_them_on_one_socket():
+    pub = Publisher("127.0.0.1", "*", queue_messages=QUEUE_LARGE_ENOUGH_TO_NEVER_DROP)
+    sub = FrameAndTruthSubscriber(pub.address, queue_messages=QUEUE_LARGE_ENOUGH_TO_NEVER_DROP)
+    rgb, depth = images(2)
+    send_until_connected(lambda: pub.send_truth({"frame": -1}), sub)
+    while sub.recv(timeout_ms=200) is not None:
+        pass
+    for frame in range(3):
+        pub.send_truth({"frame": frame, "boxes": {}})
+        for name in ["cam0", "cam1"]:
+            pub.send_frame(camera(name), frame, 0.0, rgb, depth)
+    received = [sub.recv(timeout_ms=500) for _ in range(9)]
+    assert [(type(m), m["frame"] if isinstance(m, dict) else (m.camera, m.frame)) for m in received] == [
+        step for frame in range(3) for step in [(dict, frame), (Frame, ("cam0", frame)), (Frame, ("cam1", frame))]]
+    assert np.array_equal(received[1].rgb, rgb) and np.array_equal(received[1].depth, depth)
+    sub.close()
     pub.close()

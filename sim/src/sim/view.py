@@ -6,12 +6,16 @@ import cv2
 import numpy as np
 import yaml
 
-from sim.feed import Frame, Subscriber
+from sim.feed import Frame, FrameAndTruthSubscriber
 from sim.run import DEFAULT_CONFIG
 
 WINDOW = "camera feed"
 WAITING_SCREEN = np.zeros((240, 480, 3), np.uint8)
 ESC = 27
+HEADER_HEIGHT_PX = 30
+COUNTED_BOX_BGR = (0, 255, 0)
+UNCOUNTED_BOX_BGR = (150, 150, 150)
+BOX_LABEL_HEIGHT_PX = 14
 
 
 def depth_to_color(depth: np.ndarray, depth_scale: float, near_m: float, far_m: float) -> np.ndarray:
@@ -22,11 +26,25 @@ def depth_to_color(depth: np.ndarray, depth_scale: float, near_m: float, far_m: 
     return colored
 
 
-def tile(f: Frame, fps: float, near_m: float, far_m: float, scale: float) -> np.ndarray:
+def draw_boxes_just_outside_their_pixels(img: np.ndarray, boxes: dict, scale: float) -> None:
+    for name, b in boxes.items():
+        if b["box"] is None:
+            continue
+        x0, y0, x1, y1 = b["box"]
+        left, top = math.floor(x0 * scale) - 1, math.floor(y0 * scale) - 1
+        color = COUNTED_BOX_BGR if b["counts"] else UNCOUNTED_BOX_BGR
+        cv2.rectangle(img, (left, top), (math.ceil(x1 * scale), math.ceil(y1 * scale)), color, 1)
+        label_baseline = max(top - 4, HEADER_HEIGHT_PX + BOX_LABEL_HEIGHT_PX)
+        cv2.putText(img, f"{name} {b['visible_fraction']:.2f}", (max(left, 0), label_baseline),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.4, color, 1, cv2.LINE_AA)
+
+
+def tile(f: Frame, boxes: dict, fps: float, near_m: float, far_m: float, scale: float) -> np.ndarray:
     img = np.vstack([cv2.cvtColor(f.rgb, cv2.COLOR_RGB2BGR), depth_to_color(f.depth, f.depth_scale, near_m, far_m)])
     img = cv2.resize(img, None, fx=scale, fy=scale, interpolation=cv2.INTER_AREA)
+    draw_boxes_just_outside_their_pixels(img[:img.shape[0] // 2], boxes, scale)
     label = f"{f.camera}  frame {f.frame}  t {f.t:.2f}s  {fps:.0f} fps"
-    cv2.rectangle(img, (0, 0), (img.shape[1], 30), (0, 0, 0), cv2.FILLED)
+    cv2.rectangle(img, (0, 0), (img.shape[1], HEADER_HEIGHT_PX), (0, 0, 0), cv2.FILLED)
     cv2.putText(img, label, (8, 21), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (255, 255, 255), 1, cv2.LINE_AA)
     return img
 
@@ -42,30 +60,35 @@ def compose(tiles: list[np.ndarray]) -> np.ndarray:
 def main():
     cfg = yaml.safe_load(DEFAULT_CONFIG.read_text())
     feed, view = cfg["feed"], cfg["view"]
-    parser = argparse.ArgumentParser(description="Show every camera in the feed live, color above depth. "
-                                                 "Press q or Esc to quit.")
+    parser = argparse.ArgumentParser(description="Show every camera in the feed live, color above depth, with the "
+                                                 "sim's truth boxes when it sends any. Press q or Esc to quit.")
     parser.add_argument("--address", default=f"tcp://{feed['host']}:{feed['port']}")
     address = parser.parse_args().address
     near_m, far_m = view["depth_display_m"]
 
-    sub = Subscriber(address, queue_messages=feed["queue_messages"])
-    latest: dict[str, Frame] = {}
+    sub = FrameAndTruthSubscriber(address, queue_messages=feed["queue_messages"])
+    latest: dict[str, tuple[Frame, dict]] = {}
+    boxes_of_frames_not_yet_shown: dict[int, dict] = {}
     arrival_times: dict[str, list[float]] = {}
     drawn_frame = -1
     print(f"view: listening on {address}  (q or Esc to quit)")
     cv2.namedWindow(WINDOW)
     cv2.imshow(WINDOW, WAITING_SCREEN)
     while True:
-        f = sub.recv(timeout_ms=50)
-        if f is not None:
-            latest[f.camera] = f
+        msg = sub.recv(timeout_ms=50)
+        if isinstance(msg, dict):
+            boxes_of_frames_not_yet_shown[msg["frame"]] = msg.get("boxes", {})
+        elif msg is not None:
+            f = msg
+            boxes_of_frames_not_yet_shown = {n: b for n, b in boxes_of_frames_not_yet_shown.items() if n >= f.frame}
+            latest[f.camera] = f, boxes_of_frames_not_yet_shown.get(f.frame, {}).get(f.camera, {})
             now = time.perf_counter()
             arrival_times[f.camera] = [t for t in arrival_times.get(f.camera, []) if now - t < 1.0] + [now]
             new_frame_started = f.frame != drawn_frame
             if new_frame_started:
                 drawn_frame = f.frame
                 fps_last_second = {name: len(times) for name, times in arrival_times.items()}
-                tiles = [tile(latest[n], fps_last_second[n], near_m, far_m, view["scale"]) for n in sorted(latest)]
+                tiles = [tile(*latest[n], fps_last_second[n], near_m, far_m, view["scale"]) for n in sorted(latest)]
                 cv2.imshow(WINDOW, compose(tiles))
         key = cv2.waitKey(1) & 0xFF
         if key in (ord("q"), ESC) or cv2.getWindowProperty(WINDOW, cv2.WND_PROP_VISIBLE) < 1:

@@ -21,6 +21,17 @@ class Frame:
     depth_scale: float
 
 
+def frame_from(header: bytes, rgb: bytes, depth: bytes) -> Frame:
+    h = json.loads(header)
+    shape = h["height"], h["width"]
+    return Frame(
+        camera=h["camera"], frame=h["frame"], t=h["t"],
+        rgb=np.frombuffer(rgb, np.uint8).reshape(*shape, 3).copy(),
+        depth=np.frombuffer(depth, "<u2").reshape(shape).copy(),
+        K=np.array(h["K"]), depth_scale=h["depth_scale"],
+    )
+
+
 class Publisher:
     def __init__(self, host: str, port, queue_messages: int):
         self._sock = zmq.Context.instance().socket(zmq.PUB)
@@ -80,15 +91,8 @@ class Subscriber(_Sub):
             if parts is None:
                 return None
             topic, header, rgb, depth = parts
-            h = json.loads(header)
-            if self._wants(h["camera"]):
-                shape = h["height"], h["width"]
-                return Frame(
-                    camera=h["camera"], frame=h["frame"], t=h["t"],
-                    rgb=np.frombuffer(rgb, np.uint8).reshape(*shape, 3).copy(),
-                    depth=np.frombuffer(depth, "<u2").reshape(shape).copy(),
-                    K=np.array(h["K"]), depth_scale=h["depth_scale"],
-                )
+            if self._wants(json.loads(header)["camera"]):
+                return frame_from(header, rgb, depth)
 
     def __iter__(self):
         while True:
@@ -106,3 +110,14 @@ class TruthSubscriber(_Sub):
     def __iter__(self):
         while True:
             yield self.recv()
+
+
+class FrameAndTruthSubscriber(_Sub):
+    def __init__(self, address: str = "tcp://127.0.0.1:5555", queue_messages: int = 10):
+        super().__init__(address, [CAMERA_TOPIC, TRUTH_TOPIC], queue_messages)
+
+    def recv(self, timeout_ms: int | None = None) -> Frame | dict | None:
+        parts = self._recv(timeout_ms)
+        if parts is None:
+            return None
+        return json.loads(parts[1]) if parts[0] == TRUTH_TOPIC else frame_from(*parts[1:])
