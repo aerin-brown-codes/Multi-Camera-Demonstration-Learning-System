@@ -4,7 +4,8 @@ import shutil
 import pytest
 import yaml
 
-from detect.score import BY_CLASS, BY_VISIBLE_FRACTION, as_markdown, meets_the_bar, score_run, scores_of, tallies_by_split
+from detect.score import (BY_CLASS, BY_VISIBLE_FRACTION, as_markdown, meets_the_bar, score_run, scores_at, seen_on,
+                          tallies_by_split, worst_number, worst_number_at_each_cut_off)
 from detect.scoring import Detection, Tally, Truth
 from detect.truth import CAMERA_DISTANCE, SCENE_KIND, ImageWithTruth
 from conftest import box_of_scene, write_image_and_labels, write_scene
@@ -25,6 +26,10 @@ def test_sets(cfg, tmp_path):
 
 def detector_that_reports(detections_by_image_name: dict):
     return lambda images: (detections_by_image_name.get(image.name, []) for image in images)
+
+
+def scores_of(cfg, detect, cut_off=0.25, set_name="test"):
+    return scores_at(cut_off, set_name, seen_on(set_name, cfg, detect), cfg)
 
 
 PERFECT = {"000000_cam0.png": [Detection("hand", tuple(HAND_BOX), 0.9), Detection("cube", tuple(CUBE_BOX), 0.9)],
@@ -95,14 +100,75 @@ def test_detections_must_come_one_list_per_image(cfg):
         tallies_by_split([image, image], [[]], cfg["score"])
 
 
-def test_scoring_a_run_reads_its_own_config_and_writes_the_table_beside_the_weights(test_sets, tmp_path):
+def test_detections_less_sure_than_the_cut_off_are_dropped(test_sets):
+    unsure_of_the_real_hand = {**PERFECT, "frame.jpg": [Detection("hand", tuple(HAND_BOX), 0.4)]}
+    assert scores_of(test_sets, detector_that_reports(unsure_of_the_real_hand), 0.25)["sets"]["real"]["meets_the_bar"]
+    dropped = scores_of(test_sets, detector_that_reports(unsure_of_the_real_hand), 0.5)["sets"]["real"]["splits"]
+    assert dropped[BY_CLASS]["hand"] == {"true_boxes": 1, "found": 0, "detections": 0, "right": 0,
+                                         "found_share": 0.0, "right_share": None}
+
+
+def test_worst_number_is_the_lowest_share_of_the_rows_the_bar_reads_over_every_source():
+    def row(true_boxes, found, detections, right):
+        tally = Tally(true_boxes, found, detections, right)
+        return {"true_boxes": true_boxes, "found_share": tally.found_share, "right_share": tally.right_share}
+
+    def scores(sim_rows, real_rows):
+        return {"sets": {"sim": {"splits": {BY_CLASS: sim_rows}}, "real": {"splits": {BY_CLASS: real_rows}}}}
+
+    good = row(10, 10, 10, 10)
+    assert worst_number(scores({"all": good, "cube": good}, {"hand": row(10, 9, 10, 7)})) == 0.7
+    assert worst_number(scores({"all": good, "cube": row(0, 0, 4, 0)}, {"hand": good})) == 1.0, \
+        "a class with nothing to find is not read by the bar either"
+    assert worst_number(scores({"all": good}, {"hand": row(10, 0, 0, 0)})) == 0.0, "nothing detected is the worst there is"
+
+
+@pytest.fixture
+def check_sets(test_sets, tmp_path):
+    write_scene(tmp_path / "sim", "check", 7, "sparse", {"cam0": (0.5, 80.0, {"cube": box_of_scene("cube", CUBE_BOX)})})
+    write_image_and_labels(tmp_path / "real", "check", "watched", [(0, tuple(HAND_BOX))], suffix=".jpg")
+    return test_sets
+
+
+PERFECT_ON_CHECK_TOO = {**PERFECT, "000007_cam0.png": [Detection("cube", tuple(CUBE_BOX), 0.9)],
+                        "watched.jpg": [Detection("hand", tuple(HAND_BOX), 0.9)]}
+FAIRLY_SURE_OF_THE_TRUE_HAND_AND_LESS_SURE_OF_A_FALSE_ONE = [Detection("hand", tuple(HAND_BOX), 0.6),
+                                                             Detection("hand", ELSEWHERE, 0.3)]
+
+
+def test_cut_off_with_the_highest_worst_number_on_the_check_sets_is_the_one_used(check_sets, tmp_path):
+    detect = detector_that_reports({**PERFECT_ON_CHECK_TOO,
+                                    "frame.jpg": FAIRLY_SURE_OF_THE_TRUE_HAND_AND_LESS_SURE_OF_A_FALSE_ONE,
+                                    "watched.jpg": FAIRLY_SURE_OF_THE_TRUE_HAND_AND_LESS_SURE_OF_A_FALSE_ONE})
+    assert worst_number_at_each_cut_off(seen_on("check", check_sets, detect), check_sets) == {
+        0.25: 0.5, 0.5: 1.0, 0.75: 0.0}, "0.25 keeps the false hand, 0.75 drops the true one"
     run_dir = tmp_path / "runs" / "first"
     run_dir.mkdir(parents=True)
-    (run_dir / "train.yaml").write_text(yaml.safe_dump(test_sets))
-    scores = score_run(run_dir, detector_that_reports(PERFECT))
+    (run_dir / "train.yaml").write_text(yaml.safe_dump(check_sets))
+    scores = score_run(run_dir, detect)
+    assert json.loads((run_dir / "cut_off.json").read_text())["picked"] == 0.5
+    assert scores["confidence"] == 0.5 and scores["sets"]["real"]["splits"][BY_CLASS]["hand"]["detections"] == 1
+    assert json.loads((run_dir / "check_scores.json").read_text())["confidence"] == 0.5
+
+
+def test_cut_offs_that_do_equally_well_give_the_first_of_the_list(check_sets, tmp_path):
+    run_dir = tmp_path / "runs" / "first"
+    run_dir.mkdir(parents=True)
+    (run_dir / "train.yaml").write_text(yaml.safe_dump(check_sets))
+    assert score_run(run_dir, detector_that_reports(PERFECT_ON_CHECK_TOO))["confidence"] == 0.25
+
+
+def test_scoring_a_run_reads_its_own_config_and_writes_both_tables_beside_the_weights(check_sets, tmp_path):
+    run_dir = tmp_path / "runs" / "first"
+    run_dir.mkdir(parents=True)
+    (run_dir / "train.yaml").write_text(yaml.safe_dump(check_sets))
+    scores = score_run(run_dir, detector_that_reports(PERFECT_ON_CHECK_TOO))
     assert json.loads((run_dir / "scores.json").read_text()) == scores
     table = (run_dir / "scores.md").read_text()
     assert table == as_markdown(scores)
+    assert table.startswith("The test sets.")
+    check_table = (run_dir / "check_scores.md").read_text()
+    assert check_table.startswith("The check sets.") and "## sim: 1 images" in check_table
     assert "## sim: 3 images, bar met" in table
     assert "| class | cube | 2 | 2 | 100.0% | 2 | 2 | 100.0% |" in table
     assert "| visible fraction | cube, 0.1 to 0.4 | 1 | 1 | 100.0% | 0 | 0 | - |" in table

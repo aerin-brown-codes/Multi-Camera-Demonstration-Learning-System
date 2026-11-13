@@ -34,7 +34,8 @@ def test_images_reach_the_model_a_batch_at_a_time_and_every_image_gets_its_detec
     detections = list(detect([Path(f"{n}.png") for n in range(10)]))
     assert made[0].sizes_of_calls == [4, 4, 2], "a list given whole would be run as one batch and not fit in memory"
     assert detections == [[Detection("cube", (1.0, 2.0, 3.0, 4.0), 0.5)]] * 10
-    assert made[0].settings["conf"] == 0.25 and made[0].settings["imgsz"] == 864
+    assert made[0].settings["imgsz"] == 864
+    assert made[0].settings["conf"] == 0.25, "the model must keep everything the lowest cut-off of the list would"
 
 
 def test_weights_trained_for_other_classes_are_refused(cfg_and_model):

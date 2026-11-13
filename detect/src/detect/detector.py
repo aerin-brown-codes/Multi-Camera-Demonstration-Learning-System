@@ -16,12 +16,13 @@ def detector_from_weights(weights: Path, cfg: dict) -> Detector:
         raise ValueError(f"{weights} was trained for {names_in_weights}, the config says {cfg['class_names']}")
 
     device = device_to_use(cfg["device"])
+    least_sure_any_cut_off_keeps = min(cfg["score"]["cut_offs"])
 
     def detections_per_image(images: list[Path]) -> Iterator[list[Detection]]:
         a_list_given_whole_is_run_as_one_batch = cfg["score"]["batch"]
         for start in range(0, len(images), a_list_given_whole_is_run_as_one_batch):
             together = [str(image) for image in images[start:start + a_list_given_whole_is_run_as_one_batch]]
-            for result in model.predict(together, conf=cfg["score"]["confidence"], imgsz=cfg["image_size"],
+            for result in model.predict(together, conf=least_sure_any_cut_off_keeps, imgsz=cfg["image_size"],
                                         device=device, verbose=False):
                 boxes = result.boxes
                 yield [Detection(cfg["class_names"][int(class_id)], tuple(box), float(confidence))
