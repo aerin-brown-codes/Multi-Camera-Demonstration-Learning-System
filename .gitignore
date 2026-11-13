@@ -222,3 +222,7 @@ MUJOCO_LOG.TXT
 
 # Generated and downloaded image sets (sim/dataset.py writes datasets/sim; public sets are downloaded beside it)
 datasets/
+
+# Training runs and pretrained weights (detect/train.py)
+runs/
+weights/
