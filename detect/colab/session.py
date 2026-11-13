@@ -51,9 +51,9 @@ def report_what_the_machine_has() -> None:
     for images in sorted((REPO / "datasets").glob("*/images/*")):
         print(f"session: {images.relative_to(REPO)}: {sum(1 for _ in images.iterdir())} images")
     print(f"session: {os.cpu_count()} processors")
-    run(sys.executable, "-c", "import torch, ultralytics; print('session: torch', torch.__version__, 'ultralytics', "
-                              "ultralytics.__version__, 'gpu', torch.cuda.get_device_name(0) if torch.cuda.is_available() "
-                              "else 'NONE')")
+    versions = "import torch, ultralytics; print('session: torch', torch.__version__, 'ultralytics', " \
+               "ultralytics.__version__, 'gpu', torch.cuda.get_device_name(0) if torch.cuda.is_available() else 'NONE')"
+    print(subprocess.run([sys.executable, "-c", versions], capture_output=True, text=True, check=True).stdout, end="")
 
 
 if __name__ == "__main__":

@@ -41,6 +41,6 @@ def cfg(tmp_path) -> dict:
         "runs_dir": str(tmp_path / "runs"), "class_names": ["hand", "cube"], "seed": 0,
         "sources": {"sim": {"root": str(tmp_path / "sim"), "train_images": 4, "truth_from": "scenes"},
                     "real": {"root": str(tmp_path / "real"), "train_images": 4, "truth_from": "labels"}},
-        "score": {"confidence": 0.25, "min_iou": 0.5, "batch": 4, "pass_bar": {"found": 0.9, "right": 0.9},
+        "score": {"cut_offs": [0.25, 0.5, 0.75], "pictures_of_each_mistake": 2, "min_iou": 0.5, "batch": 4, "pass_bar": {"found": 0.9, "right": 0.9},
                   "visible_fraction": [0.1, 0.4, 0.7, 1.0], "camera_distance_m": [0.4, 0.7, 1.0, 1.5],
                   "camera_height_deg": [10, 30, 50, 70, 90]}}

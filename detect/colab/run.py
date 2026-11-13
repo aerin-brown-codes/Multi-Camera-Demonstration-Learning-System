@@ -9,6 +9,7 @@ REPO = Path("/content/repo")
 RUNS = REPO / "runs"
 CODE = REPO / "detect" / "src"
 CONFIGS = CODE / "detect" / "configs"
+LOGS_ON_THE_MACHINE = Path("/content/logs")
 SCORES_OF_A_FINISHED_RUN = "scores.md"
 WEIGHTS_TO_CARRY_ON_FROM = Path("weights") / "last.pt"
 START, CARRY_ON, SKIP = "start", "carry on", "skip"
@@ -55,8 +56,18 @@ def line_about_the_machine() -> str:
     return f"machine: gpu {gpu}; processors busy {os.getloadavg()[0]:.1f} of {os.cpu_count()}"
 
 
+def copied_to_drive_which_only_keeps_a_file_once_it_is_closed(log_file: Path, log_on_drive: Path) -> None:
+    try:
+        shutil.copy(log_file, log_on_drive)
+    except OSError as error:
+        print(f"run: the log was not copied to Drive this time: {error!r}", flush=True)
+
+
 def train_and_score(name: str, config: str, action: str, commit: str, carrying_on: bool) -> int:
-    run_dir, log_file = RUNS / name, RUNS / f"{name}.log"
+    run_dir, log_file, log_on_drive = RUNS / name, LOGS_ON_THE_MACHINE / f"{name}.log", RUNS / f"{name}.log"
+    LOGS_ON_THE_MACHINE.mkdir(exist_ok=True)
+    if log_on_drive.exists() and not log_file.exists():
+        shutil.copy(log_on_drive, log_file)
     if action == START and run_dir.exists():
         if not carrying_on:
             raise FileExistsError(f"{run_dir} already holds a run; pick another name, or pass RESUME=1 to carry it on")
@@ -76,10 +87,13 @@ def train_and_score(name: str, config: str, action: str, commit: str, carrying_o
                 for line in last_state_of_each_line(written_so_far.read().decode(errors="replace")):
                     print(line, flush=True)
                 if finished:
+                    copied_to_drive_which_only_keeps_a_file_once_it_is_closed(log_file, log_on_drive)
                     return child.returncode
                 if looks % LOOKS_BETWEEN_LINES_ABOUT_THE_MACHINE == 0:
-                    log.write((line_about_the_machine() + "\n").encode())
+                    after_the_progress_bar_not_on_its_line = "\n" + line_about_the_machine() + "\n"
+                    log.write(after_the_progress_bar_not_on_its_line.encode())
                     log.flush()
+                    copied_to_drive_which_only_keeps_a_file_once_it_is_closed(log_file, log_on_drive)
                 looks += 1
                 time.sleep(SECONDS_BETWEEN_LOOKS_AT_THE_LOG)
 
