@@ -1,0 +1,14 @@
+# What detect/prepare_100doh.py takes out of the 100 Days of Hands download (docs/phase-2/04-model.md).
+# Paths are relative to the repo root.
+
+zip: datasets/100doh/pascal_voc_format.zip   # from the 100DOH download page; read in place, never unpacked
+inside_zip: pascal_voc_format/VOCdevkit2007_handobj_100K/VOC2007
+out: datasets/100doh          # gets images/<set>/ and labels/<set>/, the layout of datasets/sim
+seed: 0
+
+keep: {hand: 0}               # label name in the download -> first number of our label line. Others are dropped.
+
+sets:                         # ours: {from: the download's own list in ImageSets/Main, images: how many}
+  train: {from: train, images: 5000}
+  check: {from: val,   images: 500}
+  test:  {from: test,  images: 1000}   # the score we report. Prepare once, then leave it alone.
