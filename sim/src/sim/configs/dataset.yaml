@@ -10,7 +10,7 @@ floor_geom: floor
 
 sets:                         # scene N of a set is made from that set's seed and N alone
   train: {images: 5000, seed: 1}
-  check: {images: 500,  seed: 2}     # the training tool watches these to decide when to stop
+  check: {images: 1000, seed: 2}     # the training tool watches these to decide when to stop
   test:  {images: 1000, seed: 3}     # the score we report. Generate once, then leave it alone.
 cameras_per_scene: 4
 class_ids: {hand: 0, cube: 1}        # first number of a label line

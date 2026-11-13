@@ -1,0 +1,38 @@
+# The Colab trial (docs/phase-2/04.5-training.md): train.yaml made small enough to finish in minutes.
+# Paths are relative to the repo root. A run keeps its own copy of this file beside its weights.
+
+runs_dir: runs                # one folder per run: runs/<name>/ (weights, image lists, this file, scores)
+
+class_names: [hand, cube]     # position in this list = first number of a label line. Must match step 3's class_ids.
+
+sources:                      # each root holds images/<set>/ and labels/<set>/ for the sets train, check and test
+  sim:                        # written by sim/dataset.py
+    root: datasets/sim
+    train_images: 1000        # how many of its training images go into this run, picked with `seed`
+    truth_from: scenes        # scored against scenes/test/*.json, which also say how hidden each target was
+  real:                       # written by detect/prepare_100doh.py. Hands only.
+    root: datasets/100doh
+    train_images: 1000
+    truth_from: labels        # scored against labels/test/*.txt; every box counts
+# The check images of every source are all used: the training tool watches them to pick the best weights.
+
+model: weights/yolo26s.pt     # pretrained weights to start from; downloaded here on first use
+image_size: 864               # the D435 colour image is 848 wide; the tool needs a multiple of 32
+epochs: 3                     # the most it may run; `patience` usually stops it sooner
+patience: 15                  # stop when the check score has not improved for this many epochs. The best epoch is kept.
+batch: 16                     # for a Colab GPU. The 16 GB Mac needs 8 (9 GB used); 16 there slows to a crawl.
+workers: 8                    # processes that load images; the tool's default. The tool ignores it on mps and cpu.
+device: auto                  # auto = the GPU if there is one, else mps (the Mac), else cpu. Or name one: 0, mps, cpu.
+seed: 0                       # picks the training images and seeds the training tool
+
+score:
+  confidence: 0.25            # detections less sure than this are dropped. The tool's default.
+  min_iou: 0.5                # a detection is right when it overlaps a true box of its class by at least this
+  batch: 16                   # images per call of the model while scoring
+  pass_bar:                   # met when both hold, on every test set, for all classes together and for each class
+    found: 0.90               # true boxes that count and were detected / true boxes that count
+    right: 0.90               # detections that matched a true box / detections
+  # Sim results are also split by these. [a, b, c] makes the groups "a to b" and "b to c".
+  visible_fraction: [0.1, 0.4, 0.7, 1.0]
+  camera_distance_m: [0.4, 0.7, 1.0, 1.5]
+  camera_height_deg: [10, 30, 50, 70, 90]

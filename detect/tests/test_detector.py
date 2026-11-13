@@ -41,3 +41,10 @@ def test_weights_trained_for_other_classes_are_refused(cfg_and_model):
     cfg, _ = cfg_and_model
     with pytest.raises(ValueError, match="trained for"):
         detector.detector_from_weights(Path("best.pt"), {**cfg, "class_names": ["cube", "hand"]})
+
+
+def test_auto_in_the_config_reaches_the_model_as_a_device_of_this_machine(cfg_and_model, monkeypatch):
+    cfg, made = cfg_and_model
+    monkeypatch.setattr(detector, "device_to_use", lambda asked: f"picked for {asked}")
+    list(detector.detector_from_weights(Path("best.pt"), {**cfg, "device": "auto"})([Path("0.png")]))
+    assert made[0].settings["device"] == "picked for auto"
