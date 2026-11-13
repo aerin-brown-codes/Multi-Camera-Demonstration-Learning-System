@@ -18,10 +18,11 @@ sources:                      # each root holds images/<set>/ and labels/<set>/ 
 
 model: weights/yolo26s.pt     # pretrained weights to start from; downloaded here on first use
 image_size: 864               # the D435 colour image is 848 wide; the tool needs a multiple of 32
-epochs: 100                   # the tool's default
-batch: 8                      # 8 fits the 16 GB Mac (9 GB used); 16 does not and slows to a crawl. 16 on a Colab GPU.
+epochs: 50                    # the most it may run; `patience` usually stops it sooner
+patience: 15                  # stop when the check score has not improved for this many epochs. The best epoch is kept.
+batch: 16                     # for a Colab GPU. The 16 GB Mac needs 8 (9 GB used); 16 there slows to a crawl.
 workers: 8                    # processes that load images; the tool's default. The tool ignores it on mps and cpu.
-device: mps                   # mps on the Mac, 0 on a Colab GPU, cpu anywhere
+device: auto                  # auto = the GPU if there is one, else mps (the Mac), else cpu. Or name one: 0, mps, cpu.
 seed: 0                       # picks the training images and seeds the training tool
 
 score:

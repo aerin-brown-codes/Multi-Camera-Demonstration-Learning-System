@@ -9,6 +9,6 @@ seed: 0
 keep: {hand: 0}               # label name in the download -> first number of our label line. Others are dropped.
 
 sets:                         # ours: {from: the download's own list in ImageSets/Main, images: how many}
-  train: {from: train, images: 5000}
-  check: {from: val,   images: 500}
+  train: {from: train, images: 20000}
+  check: {from: val,   images: 1000}
   test:  {from: test,  images: 1000}   # the score we report. Prepare once, then leave it alone.
