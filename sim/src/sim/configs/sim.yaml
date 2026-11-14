@@ -5,7 +5,8 @@ rig: rig.yaml               # relative to this file
 feed:
   host: 127.0.0.1           # 0.0.0.0 to let another machine subscribe (e.g. the Ubuntu box later)
   port: 5555
-  queue_messages: 10        # ZMQ high-water mark, ~2 frames of 4 cameras + truth; slow consumers drop old frames, like a real camera
+  queue_messages: 26        # ZMQ high-water mark, 2 frames of 4 cameras (3 messages each) + truth; a reader that
+                            # falls behind loses messages, like a real camera
 
 # Scenes that list poses in configs/scenes/<scene>.yaml are placed, not simulated.
 pose_hold_s: 3.0            # how long the live feed shows each pose before moving to the next

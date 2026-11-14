@@ -1,0 +1,20 @@
+[project]
+name = "feed"
+version = "0.1.0"
+requires-python = ">=3.11"
+dependencies = [
+    "numpy>=2.4.6",
+    "pyzmq>=27.2.0",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=9.1.1",
+]
+
+[build-system]
+requires = ["uv_build>=0.13.0,<0.14"]
+build-backend = "uv_build"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

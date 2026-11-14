@@ -5,10 +5,13 @@ import time
 from pathlib import Path
 
 import mujoco
+import numpy as np
 import yaml
+from feed.frames import send_frame
+from feed.messages import METRES_PER_DEPTH_UNIT, TRUTH_TOPIC, stamp_fields, stamp_from_seconds
+from feed.pipe import Publisher
 
 from sim.boxes import BoxLimits
-from sim.feed import Publisher
 from sim.poses import Poser, held_pose_index, load_scene_poses
 from sim.render import RigRenderer
 from sim.rig import Rig, load_rig
@@ -30,6 +33,20 @@ def make_truth(model: mujoco.MjModel, data: mujoco.MjData, rig: Rig, frame: int,
     if target_boxes is not None:
         truth["boxes"] = target_boxes.in_every_camera(data)
     return truth
+
+
+def require_depth_in_the_feeds_unit(rig: Rig) -> None:
+    for cam in rig.cameras:
+        if cam.profile.depth_scale != METRES_PER_DEPTH_UNIT:
+            raise ValueError(f"camera '{cam.name}': depth_scale is {cam.profile.depth_scale} m per unit, but the "
+                             f"feed's depth image is always {METRES_PER_DEPTH_UNIT} m per unit (millimetres)")
+
+
+def send_truth_then_every_camera(pub: Publisher, rig: Rig, truth: dict, stamp: tuple[int, int],
+                                 frames: dict[str, tuple[np.ndarray, np.ndarray]]) -> None:
+    pub.send(TRUTH_TOPIC, {**truth, "stamp": stamp_fields(stamp)})
+    for cam in rig.cameras:
+        send_frame(pub, cam.name, stamp, cam.profile.K, *frames[cam.name])
 
 
 def scene_config_path(config_dir: Path, scene: str) -> Path:
@@ -74,6 +91,7 @@ def main():
     scene = args.scene or cfg["scene"]
 
     rig = load_rig(config_path.parent / cfg["rig"])
+    require_depth_in_the_feeds_unit(rig)
     model = build_model(scene, rig)
     data = mujoco.MjData(model)
     mujoco.mj_forward(model, data)
@@ -94,9 +112,8 @@ def main():
         while True:
             advance_to(frame)
             frames = renderer.render(data)
-            pub.send_truth(make_truth(model, data, rig, frame, target_boxes))
-            for cam in rig.cameras:
-                pub.send_frame(cam, frame, data.time, *frames[cam.name])
+            truth = make_truth(model, data, rig, frame, target_boxes)
+            send_truth_then_every_camera(pub, rig, truth, stamp_from_seconds(data.time), frames)
             frame += 1
 
             now = time.perf_counter()

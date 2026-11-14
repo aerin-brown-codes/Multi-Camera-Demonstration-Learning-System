@@ -5,8 +5,11 @@ import time
 import cv2
 import numpy as np
 import yaml
+from feed.frames import Frame, FramePairer
+from feed.messages import (CAMERA_TOPIC_PREFIX, METRES_PER_DEPTH_UNIT, TRUTH_TOPIC, seconds_from_stamp,
+                           stamp_from_fields)
+from feed.pipe import Subscriber
 
-from sim.feed import Frame, FrameAndTruthSubscriber
 from sim.run import DEFAULT_CONFIG
 
 WINDOW = "camera feed"
@@ -18,8 +21,8 @@ UNCOUNTED_BOX_BGR = (150, 150, 150)
 BOX_LABEL_HEIGHT_PX = 14
 
 
-def depth_to_color(depth: np.ndarray, depth_scale: float, near_m: float, far_m: float) -> np.ndarray:
-    metres = depth * depth_scale
+def depth_to_color(depth: np.ndarray, near_m: float, far_m: float) -> np.ndarray:
+    metres = depth * METRES_PER_DEPTH_UNIT
     nearness = np.clip((far_m - metres) / (far_m - near_m), 0, 1)
     colored = cv2.applyColorMap((nearness * 255).astype(np.uint8), cv2.COLORMAP_TURBO)
     colored[depth == 0] = 0
@@ -40,10 +43,10 @@ def draw_boxes_just_outside_their_pixels(img: np.ndarray, boxes: dict, scale: fl
 
 
 def tile(f: Frame, boxes: dict, fps: float, near_m: float, far_m: float, scale: float) -> np.ndarray:
-    img = np.vstack([cv2.cvtColor(f.rgb, cv2.COLOR_RGB2BGR), depth_to_color(f.depth, f.depth_scale, near_m, far_m)])
+    img = np.vstack([cv2.cvtColor(f.rgb, cv2.COLOR_RGB2BGR), depth_to_color(f.depth, near_m, far_m)])
     img = cv2.resize(img, None, fx=scale, fy=scale, interpolation=cv2.INTER_AREA)
     draw_boxes_just_outside_their_pixels(img[:img.shape[0] // 2], boxes, scale)
-    label = f"{f.camera}  frame {f.frame}  t {f.t:.2f}s  {fps:.0f} fps"
+    label = f"{f.camera}  t {seconds_from_stamp(f.stamp):.2f}s  {fps:.0f} fps"
     cv2.rectangle(img, (0, 0), (img.shape[1], HEADER_HEIGHT_PX), (0, 0, 0), cv2.FILLED)
     cv2.putText(img, label, (8, 21), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (255, 255, 255), 1, cv2.LINE_AA)
     return img
@@ -66,27 +69,31 @@ def main():
     address = parser.parse_args().address
     near_m, far_m = view["depth_display_m"]
 
-    sub = FrameAndTruthSubscriber(address, queue_messages=feed["queue_messages"])
+    sub = Subscriber([address], [CAMERA_TOPIC_PREFIX, TRUTH_TOPIC], feed["queue_messages"])
+    pairer = FramePairer()
     latest: dict[str, tuple[Frame, dict]] = {}
-    boxes_of_frames_not_yet_shown: dict[int, dict] = {}
+    boxes_of_frames_not_yet_shown: dict[tuple[int, int], dict] = {}
     arrival_times: dict[str, list[float]] = {}
-    drawn_frame = -1
+    drawn_stamp = None
     print(f"view: listening on {address}  (q or Esc to quit)")
     cv2.namedWindow(WINDOW)
     cv2.imshow(WINDOW, WAITING_SCREEN)
     while True:
         msg = sub.recv(timeout_ms=50)
-        if isinstance(msg, dict):
-            boxes_of_frames_not_yet_shown[msg["frame"]] = msg.get("boxes", {})
-        elif msg is not None:
-            f = msg
-            boxes_of_frames_not_yet_shown = {n: b for n, b in boxes_of_frames_not_yet_shown.items() if n >= f.frame}
-            latest[f.camera] = f, boxes_of_frames_not_yet_shown.get(f.frame, {}).get(f.camera, {})
+        topic, fields, data = msg or (None, None, None)
+        f = None
+        if topic == TRUTH_TOPIC:
+            boxes_of_frames_not_yet_shown[stamp_from_fields(fields["stamp"])] = fields.get("boxes", {})
+        elif topic is not None:
+            f = pairer.add(topic, fields, data)
+        if f is not None:
+            boxes_of_frames_not_yet_shown = {s: b for s, b in boxes_of_frames_not_yet_shown.items() if s >= f.stamp}
+            latest[f.camera] = f, boxes_of_frames_not_yet_shown.get(f.stamp, {}).get(f.camera, {})
             now = time.perf_counter()
             arrival_times[f.camera] = [t for t in arrival_times.get(f.camera, []) if now - t < 1.0] + [now]
-            new_frame_started = f.frame != drawn_frame
+            new_frame_started = f.stamp != drawn_stamp
             if new_frame_started:
-                drawn_frame = f.frame
+                drawn_stamp = f.stamp
                 fps_last_second = {name: len(times) for name, times in arrival_times.items()}
                 tiles = [tile(*latest[n], fps_last_second[n], near_m, far_m, view["scale"]) for n in sorted(latest)]
                 cv2.imshow(WINDOW, compose(tiles))
