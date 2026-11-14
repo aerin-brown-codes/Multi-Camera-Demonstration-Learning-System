@@ -5,5 +5,7 @@ run: run1                     # <runs_dir>/<run>/ gives the weights, the image s
 device: auto                  # as in train.yaml. The run's own `device` is not used: it was for training.
 feed_address: tcp://127.0.0.1:5555      # where the frames come from (sim.yaml, feed.port)
 publish: {host: 127.0.0.1, port: 5556}  # where the boxes go. sim.yaml's view.detections_address names the same port.
-queue_messages: 26            # ZMQ high-water mark of each connection, as in sim.yaml: 2 frames of 4 cameras
+queue_messages: 400           # ZMQ high-water mark of each connection. Larger than sim.yaml's 26 so that the detector
+                              # sees every frame while the model is busy and its skipped count is exact. It still boxes
+                              # only the newest frame of each camera. At most about 0.3 GB, held only while it stalls.
 report_every_s: 5             # how often a line is printed: boxes messages a second and frames skipped per camera
