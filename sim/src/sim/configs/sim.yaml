@@ -25,3 +25,8 @@ speed_report_s: 2.0         # how often to check
 view:
   depth_display_m: [0.5, 1.5]   # depth colour scale over the work area: near = red, far = blue/purple, no reading = black
   scale: 0.5                    # shrink tiles so 4 cameras fit on a laptop screen
+  # The model's boxes (detect.live) are drawn in magenta, only ever on the frame they were found in.
+  detections_address: tcp://127.0.0.1:5556  # where detect.live publishes (its live.yaml, publish). Nobody there is fine.
+  frames_kept: 8                # frames of each camera held back so that boxes which arrive late still find their frame
+  detector_quiet_after_s: 2     # while boxes arrive, a tile shows the newest frame that has them (late by the model's
+                                # time); after this long without any, it shows the newest frame again

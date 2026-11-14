@@ -4,6 +4,7 @@ from pathlib import Path
 import cv2
 import numpy as np
 import pytest
+import yaml
 
 from detect.labels import label_line
 
@@ -44,3 +45,13 @@ def cfg(tmp_path) -> dict:
         "score": {"cut_offs": [0.25, 0.5, 0.75], "pictures_of_each_mistake": 2, "min_iou": 0.5, "batch": 4, "pass_bar": {"found": 0.9, "right": 0.9},
                   "visible_fraction": [0.1, 0.4, 0.7, 1.0], "camera_distance_m": [0.4, 0.7, 1.0, 1.5],
                   "camera_height_deg": [10, 30, 50, 70, 90]}}
+
+
+@pytest.fixture
+def run_dir(cfg) -> Path:
+    run_dir = Path(cfg["runs_dir"]) / "first"
+    (run_dir / "weights").mkdir(parents=True)
+    (run_dir / "weights" / "best.pt").touch()
+    (run_dir / "train.yaml").write_text(yaml.safe_dump({**cfg, "image_size": 640, "device": "never used live"}))
+    (run_dir / "cut_off.json").write_text(json.dumps({"picked": 0.4}))
+    return run_dir

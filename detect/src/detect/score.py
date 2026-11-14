@@ -109,6 +109,10 @@ def as_markdown(scores: dict) -> str:
     return "\n".join(lines) + "\n"
 
 
+def picked_cut_off(run_dir: Path) -> float:
+    return json.loads((run_dir / CUT_OFF_OF_A_RUN).read_text())[PICKED]
+
+
 def score_run(run_dir: Path, detect=None) -> dict:
     cfg = load_config(run_dir / CONFIG_OF_A_RUN)
     if detect is None:

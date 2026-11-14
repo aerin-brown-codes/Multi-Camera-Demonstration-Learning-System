@@ -23,3 +23,10 @@ def test_importing_every_module_of_detect_loads_neither_sim_nor_mujoco():
     code = (f"import importlib, sys\nfor m in {modules}: importlib.import_module(m)\n"
             f"print(sorted({NOT_TO_BE_IMPORTED} & set(sys.modules)))")
     assert subprocess.run([sys.executable, "-c", code], capture_output=True, text=True, check=True).stdout.strip() == "[]"
+
+
+def test_training_scoring_and_the_detector_load_neither_feed_nor_zmq_because_colab_has_neither():
+    code = ("import sys, detect.train, detect.score, detect.detector\n"
+            "print(sorted({'feed', 'zmq'} & set(sys.modules)))")
+    loaded = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True, check=True).stdout.strip()
+    assert loaded == "[]"

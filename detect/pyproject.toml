@@ -3,11 +3,15 @@ name = "detect"
 version = "0.1.0"
 requires-python = ">=3.11"
 dependencies = [
+    "feed",
     "numpy>=2.4.6",
     "opencv-python>=5.0.0.93",
     "pyyaml>=6.0.3",
     "ultralytics>=8.4.211",
 ]
+
+[tool.uv.sources]
+feed = { workspace = true }
 
 [dependency-groups]
 dev = [
