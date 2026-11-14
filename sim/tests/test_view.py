@@ -1,11 +1,11 @@
 import numpy as np
+from feed.frames import Frame
 
-from sim.feed import Frame
 from sim.view import COUNTED_BOX_BGR, UNCOUNTED_BOX_BGR, tile
 
 WIDTH, HEIGHT = 300, 200
-BLACK_FRAME = Frame("cam0", 0, 0.0, np.zeros((HEIGHT, WIDTH, 3), np.uint8), np.zeros((HEIGHT, WIDTH), np.uint16),
-                    np.eye(3), 0.001)
+BLACK_FRAME = Frame("cam0", (0, 0), np.zeros((HEIGHT, WIDTH, 3), np.uint8), np.zeros((HEIGHT, WIDTH), np.uint16),
+                    np.eye(3))
 
 
 def box(x0_y0_x1_y1, counts=True):
