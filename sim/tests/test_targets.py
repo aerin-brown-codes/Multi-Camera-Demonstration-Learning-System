@@ -12,7 +12,7 @@ from sim.poses import HandPose, ObjectPose, Pose, Poser, T_world_palm, load_scen
 from sim.render import RigRenderer
 from sim.rig import load_rig
 from sim.run import make_truth, target_boxes_or_none_without_targets
-from sim.targets import NO_TARGET, Target, load_targets, target_of_each_geom
+from sim.targets import NO_TARGET, Target, body_and_every_body_below_it, load_targets, target_of_each_geom
 from sim.world import build_model
 
 CONFIGS = Path(sim.__file__).parent / "configs"
@@ -185,9 +185,27 @@ def test_failed_draw_of_one_target_alone_leaves_every_shape_drawn(cube_hands):
     assert np.array_equal(s.renderer.render(s.data)[cam.name][0], before[cam.name][0])
 
 
+def test_truth_carries_a_point_for_each_target_the_centre_of_mass_of_its_bodies(cube_hands):
+    s = cube_hands
+    s.poser.place(s.data, s.poses["cube_lifted"])
+    truth = json.loads(json.dumps(make_truth(s.model, s.data, s.rig, 0, s.target_boxes)))
+    assert truth["target_points"].keys() == truth["boxes"]["cam0"].keys() == {t.name for t in s.targets}
+    assert truth["target_points"]["cube"] == pytest.approx(truth["bodies"]["cube"]["pos"], abs=1e-12), \
+        "the cube's point is the cube body's position"
+    for target in s.targets:
+        bodies = body_and_every_body_below_it(s.model, s.model.body(target.body).id)
+        masses = s.model.body_mass[bodies]
+        centre_of_mass = masses @ s.data.xipos[bodies] / masses.sum()
+        assert truth["target_points"][target.name] == pytest.approx(centre_of_mass, abs=1e-9), target.name
+    wrist = truth["bodies"]["right/rh_wrist"]["pos"]
+    assert np.linalg.norm(np.subtract(truth["target_points"]["hand_right"], wrist)) > 0.04, \
+        "a hand's point is inside the palm, not at the wrist where its top body starts"
+
+
 def test_scene_without_targets_sends_no_boxes(tabletop):
     renderer = RigRenderer(tabletop.model, tabletop.rig)
     target_boxes = target_boxes_or_none_without_targets(SIM, CONFIGS, "tabletop", tabletop.model, renderer)
     renderer.close()
     assert target_boxes is None
-    assert "boxes" not in make_truth(tabletop.model, tabletop.data, tabletop.rig, 0, target_boxes)
+    truth = make_truth(tabletop.model, tabletop.data, tabletop.rig, 0, target_boxes)
+    assert "boxes" not in truth and "target_points" not in truth

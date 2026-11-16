@@ -8,8 +8,10 @@ import mujoco
 import numpy as np
 import yaml
 from feed.frames import send_frame
-from feed.messages import METRES_PER_DEPTH_UNIT, TRUTH_TOPIC, stamp_fields, stamp_from_seconds
+from feed.messages import (METRES_PER_DEPTH_UNIT, TRUTH_TOPIC, color_optical_frame, stamp_fields,
+                           stamp_from_seconds)
 from feed.pipe import Publisher
+from feed.transforms import TABLE_FRAME, static_transforms_message
 
 from sim.boxes import BoxLimits
 from sim.poses import Poser, held_pose_index, load_scene_poses
@@ -22,7 +24,7 @@ DEFAULT_CONFIG = Path(__file__).parent / "configs" / "sim.yaml"
 
 
 def make_truth(model: mujoco.MjModel, data: mujoco.MjData, rig: Rig, frame: int,
-               target_boxes: TargetBoxes | None = None) -> dict:
+               target_boxes: TargetBoxes | None = None, held_pose: dict | None = None) -> dict:
     bodies = {}
     for i in range(model.nbody):
         name = model.body(i).name
@@ -32,6 +34,9 @@ def make_truth(model: mujoco.MjModel, data: mujoco.MjData, rig: Rig, frame: int,
     truth = {"frame": frame, "t": data.time, "cameras": cameras, "bodies": bodies}
     if target_boxes is not None:
         truth["boxes"] = target_boxes.in_every_camera(data)
+        truth["target_points"] = target_boxes.centre_of_mass_of_each(data)
+    if held_pose is not None:
+        truth["pose"] = held_pose
     return truth
 
 
@@ -42,9 +47,11 @@ def require_depth_in_the_feeds_unit(rig: Rig) -> None:
                              f"feed's depth image is always {METRES_PER_DEPTH_UNIT} m per unit (millimetres)")
 
 
-def send_truth_then_every_camera(pub: Publisher, rig: Rig, truth: dict, stamp: tuple[int, int],
-                                 frames: dict[str, tuple[np.ndarray, np.ndarray]]) -> None:
+def send_truth_then_camera_poses_then_every_camera(pub: Publisher, rig: Rig, truth: dict, stamp: tuple[int, int],
+                                                   frames: dict[str, tuple[np.ndarray, np.ndarray]]) -> None:
     pub.send(TRUTH_TOPIC, {**truth, "stamp": stamp_fields(stamp)})
+    pub.send(*static_transforms_message(stamp, TABLE_FRAME, {
+        color_optical_frame(cam.name): cam.T_world_cam for cam in rig.cameras}))
     for cam in rig.cameras:
         send_frame(pub, cam.name, stamp, cam.profile.K, *frames[cam.name])
 
@@ -58,6 +65,19 @@ def target_boxes_or_none_without_targets(cfg: dict, config_dir: Path, scene: str
     scene_config = scene_config_path(config_dir, scene)
     targets = load_targets(scene_config) if scene_config.exists() else []
     return TargetBoxes(model, renderer, targets, BoxLimits(**cfg["truth_boxes"])) if targets else None
+
+
+def names_of_the_poses(config_dir: Path, scene: str) -> list[str]:
+    scene_config = scene_config_path(config_dir, scene)
+    scene_poses = load_scene_poses(scene_config) if scene_config.exists() else None
+    return [pose.name for pose in scene_poses.poses] if scene_poses else []
+
+
+def held_pose_or_none_without_poses(frame: int, fps: float, hold_s: float, names: list[str]) -> dict | None:
+    if not names:
+        return None
+    index = held_pose_index(frame, fps, hold_s, len(names))
+    return {"index": index, "name": names[index], "count": len(names)}
 
 
 def frame_advancer(cfg: dict, config_dir: Path, scene: str, model: mujoco.MjModel, data: mujoco.MjData, fps: float):
@@ -96,6 +116,7 @@ def main():
     data = mujoco.MjData(model)
     mujoco.mj_forward(model, data)
     advance_to, mode = frame_advancer(cfg, config_path.parent, scene, model, data, rig.fps)
+    pose_names = names_of_the_poses(config_path.parent, scene)
     renderer = RigRenderer(model, rig)
     target_boxes = target_boxes_or_none_without_targets(cfg, config_path.parent, scene, model, renderer)
     boxed = ", ".join(t.name for t in target_boxes.targets) if target_boxes else "nothing"
@@ -112,8 +133,9 @@ def main():
         while True:
             advance_to(frame)
             frames = renderer.render(data)
-            truth = make_truth(model, data, rig, frame, target_boxes)
-            send_truth_then_every_camera(pub, rig, truth, stamp_from_seconds(data.time), frames)
+            held_pose = held_pose_or_none_without_poses(frame, rig.fps, cfg["pose_hold_s"], pose_names)
+            truth = make_truth(model, data, rig, frame, target_boxes, held_pose)
+            send_truth_then_camera_poses_then_every_camera(pub, rig, truth, stamp_from_seconds(data.time), frames)
             frame += 1
 
             now = time.perf_counter()

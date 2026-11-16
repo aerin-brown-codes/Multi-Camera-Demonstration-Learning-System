@@ -61,8 +61,12 @@ def camera_and_kind(topic: str) -> tuple[str, str]:
                      f"{CAMERA_INFO}, {COLOR} or {DEPTH}")
 
 
+def color_optical_frame(camera: str) -> str:
+    return f"{camera}_color_optical_frame"
+
+
 def header(camera: str, stamp: tuple[int, int]) -> dict:
-    return {"stamp": stamp_fields(stamp), "frame_id": f"{camera}_color_optical_frame"}
+    return {"stamp": stamp_fields(stamp), "frame_id": color_optical_frame(camera)}
 
 
 def camera_info_message(camera: str, stamp: tuple[int, int], K: np.ndarray, width: int, height: int):

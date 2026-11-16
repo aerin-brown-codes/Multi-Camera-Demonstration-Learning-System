@@ -48,8 +48,12 @@ class TargetBoxes:
         self.targets = targets
         self._renderer = renderer
         self._limits = limits
+        self._top_body_of = {target.name: model.body(target.body).id for target in targets}
         self._target_of_geom = target_of_each_geom(model, targets)
         self._geoms_of = [self._target_of_geom == index for index in range(len(targets))]
+
+    def centre_of_mass_of_each(self, data: mujoco.MjData) -> dict[str, list[float]]:
+        return {name: data.subtree_com[top_body].tolist() for name, top_body in self._top_body_of.items()}
 
     def in_every_camera(self, data: mujoco.MjData) -> dict[str, dict[str, dict]]:
         return {cam.name: self.in_camera(data, cam) for cam in self._renderer.rig.cameras}
