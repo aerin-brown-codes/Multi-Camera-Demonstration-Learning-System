@@ -26,3 +26,9 @@ def test_the_live_detector_reads_frames_where_the_sim_sends_them_and_the_viewer_
     live, sim = load_config(CONFIGS / "live.yaml"), load_config(REPO / "sim" / "src" / "sim" / "configs" / "sim.yaml")
     assert live["feed_address"] == f"tcp://{sim['feed']['host']}:{sim['feed']['port']}"
     assert sim["view"]["detections_address"] == f"tcp://{live['publish']['host']}:{live['publish']['port']}"
+
+
+def test_the_lift_report_bands_and_pairs_its_views_as_scoring_does():
+    score, check_lift = RUN_1["score"], load_config(REPO / "sim" / "src" / "sim" / "configs" / "sim.yaml")["check_lift"]
+    assert check_lift["visible_fraction"] == score["visible_fraction"]
+    assert check_lift["min_overlap"] == score["min_iou"]

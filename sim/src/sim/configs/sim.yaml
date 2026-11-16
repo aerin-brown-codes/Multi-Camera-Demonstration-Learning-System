@@ -30,3 +30,12 @@ view:
   frames_kept: 8                # frames of each camera held back so that boxes which arrive late still find their frame
   detector_quiet_after_s: 2     # while boxes arrive, a tile shows the newest frame that has them (late by the model's
                                 # time); after this long without any, it shows the newest frame again
+
+# sim.check_lift measures how far detect.live's positions are from the truth (docs/phase-2/07-lift.md). The viewer
+# writes the same error under each box, paired the same way.
+check_lift:
+  min_overlap: 0.5                        # a box belongs to a target when they overlap at least this much
+  visible_fraction: [0.1, 0.4, 0.7, 1.0]  # bands of the report, the same as scoring's (detect's train.yaml)
+  worst_listed: 5
+  frames_kept: 60                         # stamps whose truth and boxes are held while their positions are awaited
+  progress_every_s: 10                    # how often it says how many poses it has seen
