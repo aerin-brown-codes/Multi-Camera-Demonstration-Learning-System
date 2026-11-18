@@ -9,6 +9,7 @@ import yaml
 
 from sim.board import load_board
 from sim.calibration import detect_board_pose, relative_pose
+from sim.reprojection import measure_board_reprojection
 from sim.render import RigRenderer
 from sim.rig import load_rig
 from sim.world import build_model
@@ -50,6 +51,26 @@ def main():
             camera.profile.K,
             board,
         )
+
+        # Calculate reprojection error for this camera
+        result = measure_board_reprojection(
+            rgb,
+            camera.profile.K,
+            board,
+        )
+
+        if result is None:
+            print(
+                f"{camera.name}: reprojection unavailable"
+            )
+        else:
+            print(f"\n{camera.name} reprojection results:")
+            print(f"RMSE: {result.rmse_px:.3f} px")
+            print(f"Mean error: {result.mean_px:.3f} px")
+            print(f"Median error: {result.median_px:.3f} px")
+            print(f"Max error: {result.max_px:.3f} px")
+            print(f"Corners detected: {result.n_corners}")
+
 
         if T is None:
             print(f"{camera.name}: board NOT detected")
